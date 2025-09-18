@@ -1,0 +1,16 @@
+# Universal Requirements for Work Scripts
+# Consolidated requirements for all automation scripts and the Script Launcher GUI
+
+# Core data processing and Excel file handling
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+
+# Cross-platform colored terminal output
+colorama>=0.4.6
+
+# GUI Framework (built-in with Python)
+# tkinter - Built-in GUI framework (no installation needed)
+
+# Note: The Script Launcher automatically installs these dependencies
+# in a virtual environment for optimal performance and isolation

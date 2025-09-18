@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme variables that auto-switch with OS preference */
+:root {
+  /* Light theme defaults */
+  --app-dark: 248 248 248; /* used as app background */
+  --app-darker: 255 255 255; /* main content */
+  --app-panel: 245 245 245; /* panels */
+  --app-border: 220 220 220;
+  --app-text: 17 24 39; /* gray-900 */
+  --app-text-secondary: 75 85 99; /* gray-600 */
+  --app-text-muted: 107 114 128; /* gray-500 */
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-dark: 30 30 30;
+    --app-darker: 22 22 22;
+    --app-panel: 45 45 45;
+    --app-border: 64 64 64;
+    --app-text: 255 255 255;
+    --app-text-secondary: 204 204 204;
+    --app-text-muted: 136 136 136;
+  }
+}
+
+/* Custom base styles */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: rgb(var(--app-dark));
+    color: rgb(var(--app-text));
+  }
+  
+  #root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .panel-border {
+    @apply border border-app-border;
+  }
+  
+  .button-primary {
+    @apply bg-app-blue hover:bg-app-blue-hover text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+  
+  .button-secondary {
+    @apply bg-gray-600 hover:bg-gray-500 text-white font-medium py-2 px-3 rounded-md transition-colors duration-200;
+  }
+  
+  .input-field {
+    @apply bg-app-panel border border-app-border text-app-text rounded-md px-3 py-2 focus:outline-none focus:border-app-blue;
+  }
+  
+  .select-field {
+    @apply bg-app-panel border border-app-border text-app-text rounded-md px-3 py-2 focus:outline-none focus:border-app-blue;
+  }
+  
+  .checkbox-icon {
+    @apply text-app-success;
+  }
+  
+  .status-text {
+    @apply text-app-text-secondary text-sm;
+  }
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--app-panel));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.6);
+  border-radius: 4px;
+}
+
+/* Custom highlight.js overrides for better integration */
+.hljs {
+  background: rgb(var(--app-darker)) !important;
+  color: rgb(var(--app-text)) !important;
+  border-radius: 0.5rem !important;
+}
+
+/* Markdown prose styling improvements */
+.prose {
+  max-width: none;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  color: rgb(var(--app-text));
+}
+
+.prose code {
+  background: rgb(var(--app-darker));
+  color: rgb(var(--app-blue));
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.prose pre {
+  background: rgb(var(--app-darker));
+  border: 1px solid rgb(var(--app-border));
+}
+
+.prose blockquote {
+  border-left-color: rgb(var(--app-blue));
+  background: rgba(var(--app-darker), 0.5);
+}
+
+.prose table {
+  border: 1px solid rgb(var(--app-border));
+}
+
+.prose th {
+  background: rgb(var(--app-darker));
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-blue));
+}
+
+.prose td {
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-text));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8);
+}

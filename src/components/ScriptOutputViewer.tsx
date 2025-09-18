@@ -1,0 +1,72 @@
+import React from 'react';
+
+interface ScriptOutputViewerProps {
+  output: string;
+  onClearOutput: () => void;
+}
+
+const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClearOutput }) => {
+  // Replace textarea with styled line-by-line viewer to allow highlighting
+  const renderOutput = () => {
+    const lines = (output || '').split('\n');
+    return (
+      <div className="w-full h-full p-4 bg-transparent text-app-text font-mono text-sm overflow-auto whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: '1.5'}}>
+        {lines.map((line, idx) => {
+          const isMissing = /(^|\b)missing(s)?\b/i.test(line) || /^Missing\s/i.test(line);
+          const isStderr = line.startsWith('[stderr] ');
+          const className = isStderr ? 'text-red-400' : isMissing ? 'text-red-400' : '';
+          return (
+            <div key={idx} className={className}>
+              {line.length > 0 ? line : '\u00A0'}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex-1 flex flex-col p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-2">
+          <svg className="w-5 h-5 text-app-text-muted" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M4 4a1 1 0 000 2h12a1 1 0 100-2H4zm0 5a1 1 0 000 2h12a1 1 0 100-2H4zm0 5a1 1 0 000 2h12a1 1 0 100-2H4z" clipRule="evenodd" />
+          </svg>
+          <span className="text-sm font-medium text-app-text">Output</span>
+        </div>
+        
+        <button
+          onClick={onClearOutput}
+          className="text-sm text-app-text-muted hover:text-app-text transition-colors duration-200 flex items-center space-x-1"
+          title="Clear the output log"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <span>Clear Output</span>
+        </button>
+      </div>
+
+      {/* Output Area */}
+      <div className="flex-1 bg-app-panel border border-app-border rounded-lg overflow-hidden">
+        {renderOutput()}
+      </div>
+
+      {/* Status Bar */}
+      <div className="flex items-center justify-between mt-3 text-xs text-app-text-muted">
+        <div className="flex items-center space-x-4">
+          <span>Lines: {output.split('\n').length}</span>
+          <span>Characters: {output.length}</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-app-success rounded-full"></div>
+          <span>Ready</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ScriptOutputViewer;

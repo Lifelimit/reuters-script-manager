@@ -1,0 +1,40 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "typescript.preferences.includePackageJsonAutoImports": "auto",
+    "eslint.workingDirectories": ["./"],
+    "files.associations": {
+      "*.rs": "rust",
+      "*.css": "tailwindcss"
+    },
+    "rust-analyzer.linkedProjects": [
+      "./src-tauri/Cargo.toml"
+    ],
+    "css.validate": false,
+    "less.validate": false,
+    "scss.validate": false,
+    "tailwindCSS.includeLanguages": {
+      "typescript": "typescript",
+      "javascript": "javascript",
+      "typescriptreact": "typescriptreact",
+      "javascriptreact": "javascriptreact"
+    },
+    "editor.quickSuggestions": {
+      "strings": true
+    },
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.cwd": "${workspaceFolder}"
+  },
+  "extensions": {
+    "recommendations": [
+      "rust-lang.rust-analyzer",
+      "tauri-apps.tauri-vscode",
+      "bradlc.vscode-tailwindcss",
+      "ms-vscode.vscode-typescript-next"
+    ]
+  }
+}
