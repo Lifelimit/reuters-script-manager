@@ -205,7 +205,7 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
           <div className="mb-4">
             <div className="text-sm font-medium text-app-text mb-2">Documentation:</div>
             <div className="space-y-1">
-              {(metadata?.documentation || ['README.txt', 'Snyk_Compare_Script_User_Guide.txt']).map((doc, index) => (
+              {(metadata?.documentation || ['README.md', 'Snyk_Compare_Script_User_Guide.md']).map((doc, index) => (
                 <div key={index} className="flex items-center px-3 py-1">
                   <CheckIcon />
                   <span className="text-xs text-app-text-secondary ml-2">{doc}</span>

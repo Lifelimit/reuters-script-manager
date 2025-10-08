@@ -13,21 +13,21 @@ A comprehensive documentation system for the Reuters Script Manager desktop appl
 
 #### Snyk Report Compare Script
 - **Location**: `Documents/Snyk Report Compare/`
-- **README.txt**: Complete script overview and technical details
-- **Snyk_Compare_Script_User_Guide.txt**: Step-by-step user instructions
+- **README.md**: Complete script overview and technical details
+- **Snyk_Compare_Script_User_Guide.md**: Step-by-step user instructions
 - **Purpose**: Vulnerability report analysis and tracking
 
 #### DataDome Compare Script  
 - **Location**: `Documents/DataDome Verified Bots Compare/`
-- **README.txt**: Complete script overview and technical details
-- **DataDome_Compare_Script_User_Guide.txt**: Step-by-step user instructions
+- **README.md**: Complete script overview and technical details
+- **DataDome_Compare_Script_User_Guide.md**: Step-by-step user instructions
 - **Purpose**: Bot management and classification analysis
 
 ## Documentation Standards
 
 ### Format Guidelines
-- **README files**: Technical overviews in Markdown (.md) or plain text (.txt)
-- **User Guides**: Step-by-step instructions in plain text (.txt)
+- **README files**: Technical overviews in Markdown (.md)
+- **User Guides**: Step-by-step instructions in Markdown (.md)
 - **Code documentation**: Inline comments and docstrings in source files
 
 ### Content Standards
@@ -68,11 +68,11 @@ App Way/
 ├── BUILD_STATUS.md                    # Build and deployment info
 └── Documents/
     ├── Snyk Report Compare/
-    │   ├── README.txt                  # Snyk script technical overview
-    │   └── Snyk_Compare_Script_User_Guide.txt  # Snyk user instructions
+    │   ├── README.md                  # Snyk script technical overview
+    │   └── Snyk_Compare_Script_User_Guide.md  # Snyk user instructions
     └── DataDome Verified Bots Compare/
-        ├── README.txt                  # DataDome script technical overview
-        └── DataDome_Compare_Script_User_Guide.txt  # DataDome user instructions
+        ├── README.md                  # DataDome script technical overview
+        └── DataDome_Compare_Script_User_Guide.md  # DataDome user instructions
 ```
 
 ## Contributing to Documentation

@@ -18,22 +18,34 @@ pub async fn read_documentation_file(
 
     // Prefer workspace Documents if exists, else resource dir, else resolve_resource mapping
     let mut bases: Vec<PathBuf> = Vec::new();
-    // Workspace relative path
+    // Workspace relative paths
+    bases.push(PathBuf::from("Documents").join("Main"));
     bases.push(PathBuf::from("Documents").join("Snyk Report Compare"));
+    bases.push(PathBuf::from("Documents").join("DataDome Verified Bots Compare"));
     // Derive App Way root from executable path in dev: .../src-tauri/target/<profile>/ -> up 3 levels
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             if let Some(app_way) = exe_dir.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+                bases.push(app_way.join("Documents").join("Main"));
                 bases.push(app_way.join("Documents").join("Snyk Report Compare"));
+                bases.push(app_way.join("Documents").join("DataDome Verified Bots Compare"));
             }
         }
     }
     // Tauri resource dir
     if let Some(res_dir) = app_handle.path_resolver().resource_dir() {
+        bases.push(res_dir.join("Documents").join("Main"));
         bases.push(res_dir.join("Documents").join("Snyk Report Compare"));
+        bases.push(res_dir.join("Documents").join("DataDome Verified Bots Compare"));
     }
     // Logical resource mapping
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/Main") {
+        bases.push(resolved);
+    }
     if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/Snyk Report Compare") {
+        bases.push(resolved);
+    }
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/DataDome Verified Bots Compare") {
         bases.push(resolved);
     }
 

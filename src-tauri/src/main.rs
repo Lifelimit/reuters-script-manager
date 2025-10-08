@@ -938,6 +938,13 @@ async fn read_script_metadata(
         working_dir.to_string_lossy()
     );
 
+    // Build documentation list based on script type using Markdown files
+    let docs = if fname.to_lowercase().contains("datadome_compare.py") {
+        vec!["README.md", "DataDome_Compare_Script_User_Guide.md"]
+    } else {
+        vec!["README.md", "Snyk_Compare_Script_User_Guide.md"]
+    };
+
     // Return dummy metadata structured like the left panel in the screenshot
     let metadata = json!({
         "script_name": script_name,
@@ -946,10 +953,7 @@ async fn read_script_metadata(
             "script": abs_script_path.to_string_lossy().to_string(),
             "working_dir": working_dir.to_string_lossy().to_string()
         },
-        "documentation": [
-            "README.txt",
-            "User_Guide.txt"
-        ],
+        "documentation": docs,
         "dependencies": [
             "pandas",
             "openpyxl", 
