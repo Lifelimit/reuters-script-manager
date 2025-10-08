@@ -1,102 +1,121 @@
-# Reuters Script Manager - Main Documentation
+# 📘 Reuters Script Manager — Main Documentation
 
-A comprehensive documentation system for the Reuters Script Manager desktop application and associated Python scripts.
+Clear, modern documentation for the Reuters Script Manager desktop app and its Python scripts, styled for readability and quick navigation.
 
-## Documentation Structure
+---
 
-### Main Application Documentation
-- **README.md**: Complete application overview, features, and setup instructions
-- **VS_CODE_GUIDE.md**: Development setup and VS Code configuration guide
-- **BUILD_STATUS.md**: Build configuration and deployment information
+## 🎯 Overview
 
-### Script-Specific Documentation
+This documentation provides:
+- ✅ High-level application guidance
+- 📚 Script-specific technical details and user guides
+- 🛠️ Development and build information
+- 🧩 Troubleshooting and best practices
 
-#### Snyk Report Compare Script
+---
+
+## 📚 Documentation Structure
+
+### 🧭 Main Application Docs
+- `README.md` — Overview, features, usage
+- `VS_CODE_GUIDE.md` — Development setup and VS Code configuration
+- `BUILD_STATUS.md` — Build configuration and deployment
+
+### 🧪 Script-Specific Docs
+
+#### 🔐 Snyk Report Compare
 - **Location**: `Documents/Snyk Report Compare/`
-- **README.md**: Complete script overview and technical details
-- **Snyk_Compare_Script_User_Guide.md**: Step-by-step user instructions
-- **Purpose**: Vulnerability report analysis and tracking
+- `README.md` — Technical overview and behavior
+- `Snyk_Compare_Script_User_Guide.md` — Step-by-step user guide
+- **Purpose**: Vulnerability analysis and tracking
 
-#### DataDome Compare Script  
+#### 🤖 DataDome Compare
 - **Location**: `Documents/DataDome Verified Bots Compare/`
-- **README.md**: Complete script overview and technical details
-- **DataDome_Compare_Script_User_Guide.md**: Step-by-step user instructions
-- **Purpose**: Bot management and classification analysis
+- `README.md` — Technical overview and behavior
+- `DataDome_Compare_Script_User_Guide.md` — Step-by-step user guide
+- **Purpose**: Verified bots and AI agents analysis
 
-## Documentation Standards
+---
 
-### Format Guidelines
-- **README files**: Technical overviews in Markdown (.md)
-- **User Guides**: Step-by-step instructions in Markdown (.md)
-- **Code documentation**: Inline comments and docstrings in source files
+## 📏 Documentation Standards
 
-### Content Standards
+### 🧴 Format Guidelines
+- READMEs: Technical overviews in Markdown (`.md`)
+- User Guides: Step-by-step instructions in Markdown (`.md`)
+- Code: Inline comments and docstrings in source files
+
+### 🧠 Content Standards
 - Clear, concise explanations
-- Step-by-step instructions for users
-- Troubleshooting sections for common issues
-- Requirements and prerequisites clearly stated
+- Step-by-step instructions
+- Requirements and prerequisites
+- Troubleshooting for common issues
 - Examples and screenshots where helpful
 
-### Update Policy
-- Documentation updated with each major feature addition
-- Date stamps for tracking changes
-- Cross-references maintained between related documents
+### 🔄 Update Policy
+- Update docs with major feature additions
+- Include date stamps when appropriate
+- Maintain cross-references between related documents
 
-## Quick Reference
+---
 
-### For End Users
-1. **Getting Started**: Read main README.md for application overview
-2. **Script Usage**: Refer to script-specific User Guides in Documents folders
-3. **Troubleshooting**: Check individual README files for common issues
+## ⚡ Quick Reference
 
-### For Developers
-1. **Development Setup**: Follow VS_CODE_GUIDE.md for environment setup
-2. **Architecture**: Review main README.md for technical architecture
-3. **Build Process**: Check BUILD_STATUS.md for deployment information
+### 👤 End Users
+1. Read `Documents/Main/README.md` for app overview
+2. Open the relevant User Guide from the launcher
+3. Use the Troubleshooting sections in script READMEs
 
-### For Administrators
-1. **System Requirements**: Review README.md prerequisites section
-2. **Environment Setup**: Follow installation guides for each platform
-3. **Maintenance**: Check individual script documentation for maintenance procedures
+### 👨‍💻 Developers
+1. Follow `VS_CODE_GUIDE.md` for setup
+2. Review `README.md` for architecture and usage
+3. Check `BUILD_STATUS.md` for build details
 
-## Documentation Locations
+### 🛡️ Administrators
+1. Verify system prerequisites in app README
+2. Follow platform-specific setup guides
+3. Use script docs for maintenance procedures
+
+---
+
+## 📁 Documentation Locations
 
 ```
 App Way/
 ├── README.md                           # Main application documentation
-├── VS_CODE_GUIDE.md                   # Development setup guide
-├── BUILD_STATUS.md                    # Build and deployment info
+├── VS_CODE_GUIDE.md                    # Development setup guide
+├── BUILD_STATUS.md                     # Build and deployment info
 └── Documents/
     ├── Snyk Report Compare/
-    │   ├── README.md                  # Snyk script technical overview
-    │   └── Snyk_Compare_Script_User_Guide.md  # Snyk user instructions
+    │   ├── README.md                   # Snyk script technical overview
+    │   └── Snyk_Compare_Script_User_Guide.md   # Snyk user instructions
     └── DataDome Verified Bots Compare/
-        ├── README.md                  # DataDome script technical overview
-        └── DataDome_Compare_Script_User_Guide.md  # DataDome user instructions
+        ├── README.md                   # DataDome script technical overview
+        └── DataDome_Compare_Script_User_Guide.md # DataDome user instructions
 ```
 
-## Contributing to Documentation
+---
 
-### When to Update
-- New features added to the application
-- Script functionality changes
-- User interface modifications
-- Bug fixes that affect user workflow
-- New platform support added
+## ✍️ Contributing to Documentation
 
-### How to Update
-1. Identify affected documentation files
-2. Update technical details in README files
-3. Revise user instructions in User Guides
-4. Test instructions with actual application
+### 🗓️ When to Update
+- New features or UI changes
+- Script functionality updates
+- Bug fixes affecting workflows
+- New platform support
 
-### Quality Checklist
+### 🧭 How to Update
+1. Identify affected files
+2. Update technical details in `README.md`
+3. Revise instructions in User Guides
+4. Validate by following the updated steps
+
+### ✅ Quality Checklist
 - [ ] Technical accuracy verified
-- [ ] User instructions tested
+- [ ] User instructions tested end-to-end
 - [ ] Cross-references updated
-- [ ] Formatting consistent
+- [ ] Consistent formatting
 - [ ] Spelling and grammar checked
 
-This documentation system ensures users and developers have comprehensive, 
-up-to-date information about all aspects of the Reuters Script Manager
-desktop application and its associated Python scripts.
+---
+
+This documentation system keeps both users and developers fully informed about the Reuters Script Manager and its associated Python scripts.

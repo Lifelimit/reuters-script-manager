@@ -1,100 +1,81 @@
-# 📊 Thomson Reuters Script Manager
+# 📘 Reuters Script Manager
 
-A professional desktop application for managing and executing Thomson Reuters Python scripts with automatic environment setup, real-time file monitoring, and rich documentation support.
+Modern, readable documentation for the desktop application and its Python scripts — styled to match the User Guide for a consistent experience.
 
-![Thomson Reuters](https://img.shields.io/badge/Thomson-Reuters-blue?style=flat-square)
-![Tauri](https://img.shields.io/badge/Tauri-React-orange?style=flat-square)
-![License](https://img.shields.io/badge/License-Private-red?style=flat-square)
+---
 
-## 🚀 Features
+## 🎯 Overview
 
-### � **Automatic Environment Management**
-- ✅ Auto-creates Python virtual environments
-- ✅ Installs required dependencies automatically
-- ✅ Handles `requirements.txt` parsing and validation
-- ✅ Cross-platform compatibility (Windows, macOS, Linux)
+The Reuters Script Manager helps you:
+- 🔐 Analyze and compare Snyk vulnerability reports
+- 🤖 Review DataDome verified bots and AI agents
+- 🧭 View all related documentation directly in-app
 
-### 👁️ **Real-Time Monitoring**
-- ✅ Live file system monitoring for required files
-- ✅ Visual status indicators for file availability
-- ✅ Automatic requirement validation before script execution
-- ✅ Smart button states (disabled when requirements not met)
+---
 
-### 📚 **Rich Documentation**
-- ✅ In-app Markdown documentation viewer
-- ✅ Syntax highlighting for code examples
-- ✅ Script-specific user guides
-- ✅ Professional formatting with icons and tables
+## 🧩 Features
 
-### 🎯 **Supported Scripts**
-- **Snyk Report Compare**: Vulnerability analysis and tracking
-- **DataDome Bot Compare**: Bot verification and management
+- 🧰 Automatic Python environment management (virtualenv + `requirements.txt`)
+- 👁️ Real-time file monitoring and requirement validation
+- 📚 In-app Markdown documentation viewer with syntax highlighting
+- 🎛️ Smart controls (disabled until requirements are met)
+- 🧪 Supported scripts: Snyk Report Compare, DataDome Verified Bots Compare
 
-## 🏗️ Technology Stack
+---
 
-- **Frontend**: React 18 + TypeScript + Tailwind CSS
-- **Backend**: Tauri (Rust) + Python integration
-- **Documentation**: Markdown with syntax highlighting
-- **Build System**: Vite + npm
-- **Icons**: Custom TR-branded SVG icons
+## 🚀 Getting Started
 
-## � Prerequisites
+1. Install dependencies: `npm install`
+2. Run the app (development): `npm run dev`  
+   Alternatively, desktop with Tauri: `npm run tauri dev`
+3. Build for production: `npm run build` and `npm run tauri build`
 
-- **Node.js** 16+ and npm
-- **Rust** (for Tauri)
-- **Python** 3.8+ (automatically managed)
+---
 
-## 🚀 Quick Start
+## 📚 Documentation Map
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+Documentation lives under `Documents/` and is accessible from within the app:
 
-### 2. Development Mode
-```bash
-npm run tauri dev
-```
+### 🧭 Main Application Docs
+- `Documents/Main/README.md` — App overview, features, usage
+- `Documents/Main/VS_CODE_GUIDE.md` — Developer setup and VS Code tips
+- `Documents/Main/BUILD_STATUS.md` — Build and packaging information
 
-### 3. Build for Production
-```bash
-npm run tauri build
-```
+### 🔐 Snyk Report Compare
+- `Documents/Snyk Report Compare/README.md` — Technical overview
+- `Documents/Snyk Report Compare/Snyk_Compare_Script_User_Guide.md` — User Guide
 
-## 📁 Project Structure
+### 🤖 DataDome Verified Bots Compare
+- `Documents/DataDome Verified Bots Compare/README.md` — Technical overview
+- `Documents/DataDome Verified Bots Compare/DataDome_Compare_Script_User_Guide.md` — User Guide
 
-```
-src/
-├── components/           # React components
-│   ├── DocumentViewer.tsx    # Markdown documentation viewer
-│   ├── ScriptDetailsPanel.tsx # Script info and file status
-│   ├── ScriptControlPanel.tsx # Execution controls
-│   └── ScriptOutputViewer.tsx # Real-time output display
-├── App.tsx              # Main application component
-└── main.tsx            # React entry point
+---
 
-src-tauri/
-├── src/                 # Rust backend code
-├── icons/              # Application icons
-└── tauri.conf.json     # Tauri configuration
+## 🧪 Scripts
 
-scripts/
-├── snyk_compare.py     # Snyk vulnerability analysis
-└── datadome_compare.py # DataDome bot management
+- `scripts/snyk_compare.py` — Compare Snyk reports over time
+- `scripts/datadome_compare.py` — Compare DataDome verified bots
 
-Documents/
-├── Main/               # General documentation
-├── Snyk Report Compare/    # Snyk-specific guides
-└── DataDome Verified Bots Compare/ # DataDome guides
-```
+---
+
+## 🛠️ Tech Stack
+
+- Frontend: React + TypeScript
+- Backend: Rust (Tauri)
+- Packaging: Tauri
+- Documentation: Markdown rendered in-app
+
+---
 
 ## 🎯 Usage
 
-1. **Launch Application**: Run the built application or development server
-2. **Select Script**: Choose between Snyk Report Compare or DataDome Compare
-3. **Check Requirements**: The app automatically validates required files
-4. **View Documentation**: Click "View Guide" for script-specific instructions
-5. **Execute Script**: Run button enables when all requirements are met
+1. Launch the application (development or built desktop)
+2. Select a script: Snyk or DataDome
+3. Ensure required files are available (status indicators guide you)
+4. Open the relevant User Guide for step-by-step instructions
+5. Execute the script once requirements are met
+
+---
 
 ## 📊 Script Requirements
 
@@ -102,10 +83,12 @@ Documents/
 - `Snyk Report CAT YYYY-MM-DD.xlsx` (latest report)
 - `Snyk Vulnerability tracker.xlsx` (tracking file)
 
-### DataDome Compare  
+### DataDome Compare
 - `DataDome_Export_AI_agents_YYYY-MM-DD.xlsx`
 - `DataDome_Export_verified_bots_YYYY-MM-DD.xlsx`
 - `DataDome Bots - Block or Whitelist.xlsx`
+
+---
 
 ## 🔧 Configuration
 
@@ -114,28 +97,32 @@ The application automatically configures:
 - Required Python packages: `pandas`, `openpyxl`, `colorama`
 - Working directory relative to application location
 
+---
+
 ## 🛠️ Development
 
 ### Available Scripts
-- `npm run dev` - Start Vite development server
-- `npm run build` - Build frontend for production
-- `npm run tauri dev` - Start Tauri development mode
-- `npm run tauri build` - Build complete application
+- `npm run dev` — Start Vite development server
+- `npm run build` — Build frontend for production
+- `npm run tauri dev` — Start Tauri development mode
+- `npm run tauri build` — Build complete application
 
 ### Key Technologies
-- **React 18**: Modern React with hooks and TypeScript
-- **Tauri**: Secure, lightweight desktop app framework
-- **Tailwind CSS**: Utility-first CSS framework
-- **React Markdown**: Rich documentation rendering
-
-## 📜 License
-
-Private - Thomson Reuters Internal Use Only
-
-## 🤝 Contributing
-
-This is a private repository for Thomson Reuters internal use. For questions or contributions, contact the development team.
+- React 18 with TypeScript
+- Tauri (Rust)
+- Tailwind CSS
+- React Markdown
 
 ---
 
-**Thomson Reuters Script Manager** - Professional desktop automation for script management and execution.
+## 📜 License
+
+Private — Internal Use Only
+
+## 🤝 Contributing
+
+This is a private repository. For questions or contributions, contact the development team.
+
+---
+
+Reuters Script Manager — Professional desktop automation for script management and execution.
