@@ -37,7 +37,25 @@ fn launcher_visible_base_dir() -> PathBuf {
                 }
             }
         }
+        return base;
     }
+
+    // Development executable lives under: <workspace>/src-tauri/target/{debug|release}
+    // For a better user experience, place visible data folders at the workspace root
+    // rather than inside the target directory.
+    // If the path matches that layout, step up to the workspace root.
+    let is_cargo_target = base.ends_with("debug") || base.ends_with("release");
+    if is_cargo_target {
+        if let Some(target_dir) = base.parent() { // .../src-tauri/target
+            if let Some(src_tauri_dir) = target_dir.parent() { // .../src-tauri
+                if let Some(workspace_root) = src_tauri_dir.parent() { // .../<workspace>
+                    return workspace_root.to_path_buf();
+                }
+            }
+        }
+    }
+
+    // Fallback: use the executable directory
     base
 }
 
@@ -501,18 +519,26 @@ async fn analyze_required_files(
             let n = e.file_name(); let s = n.to_string_lossy();
             s.ends_with(".xlsx") && !s.starts_with('~') && !s.starts_with('.') && !s.starts_with("._")
         })).unwrap_or(false);
+
+        // Prefer portable layout: folders next to the launcher (dev: workspace root)
+        let (snyk_portable, datadome_portable) = ensure_visible_data_dirs();
+
         if fname.to_lowercase().contains("snyk_compare.py") {
             let app_cand = app_way.join("Snyk Report Compare");
             let script_cand = workspace_root.join("Script Way").join("Snyk Report Compare");
-            if app_cand.exists() && has_xlsx(&app_cand) { wd = app_cand; }
-            else if script_cand.exists() && has_xlsx(&script_cand) { wd = script_cand; }
+            if has_xlsx(&snyk_portable) { wd = snyk_portable; }
+            else if has_xlsx(&app_cand) { wd = app_cand; }
+            else if has_xlsx(&script_cand) { wd = script_cand; }
+            else if snyk_portable.exists() { wd = snyk_portable; }
             else if app_cand.exists() { wd = app_cand; }
             else if script_cand.exists() { wd = script_cand; }
         } else if fname.to_lowercase().contains("datadome_compare.py") {
             let app_cand = app_way.join("DataDome Verified Bots Compare");
             let script_cand = workspace_root.join("Script Way").join("DataDome Verified Bots Compare");
-            if app_cand.exists() && has_xlsx(&app_cand) { wd = app_cand; }
-            else if script_cand.exists() && has_xlsx(&script_cand) { wd = script_cand; }
+            if has_xlsx(&datadome_portable) { wd = datadome_portable; }
+            else if has_xlsx(&app_cand) { wd = app_cand; }
+            else if has_xlsx(&script_cand) { wd = script_cand; }
+            else if datadome_portable.exists() { wd = datadome_portable; }
             else if app_cand.exists() { wd = app_cand; }
             else if script_cand.exists() { wd = script_cand; }
         }
@@ -904,6 +930,13 @@ async fn read_script_metadata(
             else if script_datadome.exists() { working_dir = script_datadome; }
         }
     }
+
+    // Log selected working directory for verification during development
+    println!(
+        "[read_script_metadata] script='{}' working_dir='{}'",
+        abs_script_path.to_string_lossy(),
+        working_dir.to_string_lossy()
+    );
 
     // Return dummy metadata structured like the left panel in the screenshot
     let metadata = json!({

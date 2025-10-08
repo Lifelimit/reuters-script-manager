@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+const isBrowserPreview = typeof (window as any).__TAURI_IPC__ !== 'function';
 // prefer backend for path existence due to runtime cwd and sandbox differences
 
 interface ScriptMetadata {
@@ -92,10 +93,15 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
       setCanReveal(false);
       return;
     }
-    // Check existence via backend (handles absolute/relative paths reliably)
-    invoke<boolean>('path_exists', { path: workingDir })
-      .then((ok) => { if (!cancelled) setCanReveal(Boolean(ok)); })
-      .catch(() => { if (!cancelled) setCanReveal(false); });
+    if (isBrowserPreview) {
+      // In browser preview, assume the mocked working dir is present
+      setCanReveal(true);
+    } else {
+      // Check existence via backend (handles absolute/relative paths reliably)
+      invoke<boolean>('path_exists', { path: workingDir })
+        .then((ok) => { if (!cancelled) setCanReveal(Boolean(ok)); })
+        .catch(() => { if (!cancelled) setCanReveal(false); });
+    }
     return () => {
       cancelled = true;
     };
@@ -149,9 +155,14 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
                       if (!canReveal || opening) return;
                       setOpening(true);
                       try {
-                        const result = await invoke<string>('reveal_path', { path: workingDir });
-                        if (result === 'opened_parent') {
-                          setRevealInfo('Opened parent folder');
+                        if (isBrowserPreview) {
+                          // No-op reveal in browser; just show info
+                          setRevealInfo('Preview mode: cannot open Finder');
+                        } else {
+                          const result = await invoke<string>('reveal_path', { path: workingDir });
+                          if (result === 'opened_parent') {
+                            setRevealInfo('Opened parent folder');
+                          }
                         }
                       } catch (e: any) {
                         const msg = typeof e === 'string' ? e : (e?.message || 'Failed to reveal path');

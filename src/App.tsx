@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { listen } from '@tauri-apps/api/event';
+
+// Detect if running outside of Tauri (e.g., plain browser hitting Vite dev server)
+const isBrowserPreview = typeof (window as any).__TAURI_IPC__ !== 'function';
 import Header from './components/Header';
 import ScriptDetailsPanel from './components/ScriptDetailsPanel';
 import ScriptControlPanel from './components/ScriptControlPanel';
@@ -77,12 +80,31 @@ function App() {
     }
     
     try {
-      const content = await invoke<string>('read_documentation_file', {
-        doc_path: file,
-        docPath: file,
-        args: { doc_path: file, docPath: file }
-      });
-      setDocModal({ title, file, content });
+      if (isBrowserPreview) {
+        // Import documentation directly in preview mode
+        let content: string = '';
+        if (doc === 'readme') {
+          const m = await import('../Documents/Main/README.md?raw');
+          content = m.default || (m as any);
+          setDocModal({ title, file, content });
+          return;
+        }
+        if (selectedLabel === 'DataDome Compare') {
+          const m = await import('../Documents/DataDome Verified Bots Compare/DataDome_Compare_Script_User_Guide.md?raw');
+          content = m.default || (m as any);
+        } else {
+          const m = await import('../Documents/Snyk Report Compare/Snyk_Compare_Script_User_Guide.md?raw');
+          content = m.default || (m as any);
+        }
+        setDocModal({ title, file, content });
+      } else {
+        const content = await invoke<string>('read_documentation_file', {
+          doc_path: file,
+          docPath: file,
+          args: { doc_path: file, docPath: file }
+        });
+        setDocModal({ title, file, content });
+      }
     } catch (err) {
       setDocModal({ title, file, content: 'Failed to load documentation: ' + err });
     }
@@ -96,24 +118,42 @@ function App() {
       let setupErrText: string | null = null;
       try {
         setOutput((p) => p + 'Setting up Python environment...\n');
-        await invoke<string>('setup_python_env');
-        setOutput((p) => p + 'Checking dependencies...\n');
-        const statusesJson = await invoke<string>('check_python_deps');
-        const statuses: DepStatus[] = JSON.parse(statusesJson);
-        setDeps(statuses);
-        const missingCount = statuses.filter(s => !s.installed).length;
-        const okAll = missingCount === 0;
-        setOutput((p) => p + (okAll ? 'All dependencies installed.\n' : 'Some dependencies are missing.\n'));
-        setEnvStatus({
-          python_env_status: 'ok',
-          python_env_message: 'Python environment ready',
-          venv_status: okAll ? 'ok' : 'warn',
-          // Keep tooltip focused on venv readiness; optionally mention deps
-          venv_message: okAll
-            ? 'Virtual environment ready'
-            : `Virtual environment ready; ${missingCount} dependenc${missingCount === 1 ? 'y' : 'ies'} missing`,
-        });
-        setDepsChecked(true);
+        if (isBrowserPreview) {
+          // Simulate successful env setup in preview
+          const simulatedDeps: DepStatus[] = [
+            { name: 'pandas', installed: true, version: '2.2.2' },
+            { name: 'openpyxl', installed: true, version: '3.1.2' },
+            { name: 'colorama', installed: true, version: '0.4.6' },
+          ];
+          setOutput((p) => p + 'Checking dependencies...\n');
+          setDeps(simulatedDeps);
+          setOutput((p) => p + 'All dependencies installed.\n');
+          setEnvStatus({
+            python_env_status: 'ok',
+            python_env_message: 'Python environment ready',
+            venv_status: 'ok',
+            venv_message: 'Virtual environment ready',
+          });
+          setDepsChecked(true);
+        } else {
+          await invoke<string>('setup_python_env');
+          setOutput((p) => p + 'Checking dependencies...\n');
+          const statusesJson = await invoke<string>('check_python_deps');
+          const statuses: DepStatus[] = JSON.parse(statusesJson);
+          setDeps(statuses);
+          const missingCount = statuses.filter(s => !s.installed).length;
+          const okAll = missingCount === 0;
+          setOutput((p) => p + (okAll ? 'All dependencies installed.\n' : 'Some dependencies are missing.\n'));
+          setEnvStatus({
+            python_env_status: 'ok',
+            python_env_message: 'Python environment ready',
+            venv_status: okAll ? 'ok' : 'warn',
+            venv_message: okAll
+              ? 'Virtual environment ready'
+              : `Virtual environment ready; ${missingCount} dependenc${missingCount === 1 ? 'y' : 'ies'} missing`,
+          });
+          setDepsChecked(true);
+        }
       } catch (err: any) {
         setupErrText = String(err);
         setOutput((p) => p + `Environment setup failed: ${setupErrText}\n`);
@@ -143,6 +183,37 @@ function App() {
 
   const loadScriptMetadata = async (scriptPath: string) => {
     try {
+      if (isBrowserPreview) {
+        // Provide a minimal mock so the UI renders in browser mode
+        const isSnyk = scriptPath.includes('snyk');
+        const mockWd = isSnyk
+          ? 'Snyk Report Compare'
+          : scriptPath.includes('datadome')
+            ? 'DataDome Verified Bots Compare'
+            : '';
+        const mockAbsScript = scriptPath;
+        const mockDocs = isSnyk
+          ? ['README.md', 'Snyk_Compare_Script_User_Guide.md']
+          : ['README.md', 'DataDome_Compare_Script_User_Guide.md'];
+        const mockReqs = isSnyk
+          ? ['Snyk Report CAT YYYY-MM-DD.xlsx', 'Snyk Report CAT YYYY-MM-DD.xlsx', 'Snyk Vulnerability tracker.xlsx']
+          : ['DataDome Bots - Block or Whitelist.xlsx', 'DataDome_Export_AI_agents_YYYY-MM-DD.xlsx', 'DataDome_Export_verified_bots_YYYY-MM-DD.xlsx'];
+        const mock: ScriptMetadata = {
+          script_name: isSnyk ? 'Snyk Report Compare' : 'DataDome Compare',
+          file_status: 'Script file exists',
+          paths: {
+            script: mockAbsScript,
+            // In browser preview, we cannot resolve absolute paths; show folder name
+            working_dir: mockWd,
+          },
+          documentation: mockDocs,
+          dependencies: ['pandas', 'openpyxl', 'colorama'],
+          required_files: mockReqs,
+        };
+        setScriptMetadata({ ...mock, ...envStatus });
+        return; // Skip watcher and backend calls in browser mode
+      }
+
       const metadataJson = await invoke<string>('read_script_metadata', {
         script_path: scriptPath,
         scriptPath: scriptPath,
@@ -233,7 +304,9 @@ function App() {
         try { fileWatchUnsub.current(); } catch {}
         fileWatchUnsub.current = null;
       }
-      invoke<string>('stop_file_watch').catch(() => {});
+      if (!isBrowserPreview) {
+        invoke<string>('stop_file_watch').catch(() => {});
+      }
     };
   }, []);
 
@@ -244,12 +317,28 @@ function App() {
     }
 
     try {
-      const result = await invoke<string>('launch_script', {
-        script_path: selectedScript,
-        scriptPath: selectedScript,
-        args: { script_path: selectedScript, scriptPath: selectedScript }
-      });
-      setOutput(prev => prev + `${result}\n`);
+      if (isBrowserPreview) {
+        // Simulate a short run with output lines and success
+        setOutput((p) => p + `Launching script: ${selectedLabel}\n`);
+        const lines = [
+          'Initializing...',
+          'Reading input files...',
+          'Analyzing data...',
+          'Writing results...',
+          'Done.'
+        ];
+        for (const ln of lines) {
+          setOutput((p) => p + ln + '\n');
+        }
+        setOutput((p) => p + 'Process exited with code 0\n');
+      } else {
+        const result = await invoke<string>('launch_script', {
+          script_path: selectedScript,
+          scriptPath: selectedScript,
+          args: { script_path: selectedScript, scriptPath: selectedScript }
+        });
+        setOutput(prev => prev + `${result}\n`);
+      }
     } catch (error) {
       setOutput(prev => prev + `Error: ${error}\n`);
     }
@@ -257,9 +346,16 @@ function App() {
 
   const handleBrowseFile = async () => {
     try {
-      const filePath = await invoke<string>('browse_file');
-      setSelectedScript(filePath);
-      setOutput(prev => prev + `Selected script: ${filePath}\n`);
+      if (isBrowserPreview) {
+        // Toggle between known scripts for preview
+        const next = selectedLabel === 'Snyk Report Compare' ? 'DataDome Compare' : 'Snyk Report Compare';
+        handleScriptSelect(next);
+        setOutput((p) => p + `Selected script: ${resolveScriptPath(next)}\n`);
+      } else {
+        const filePath = await invoke<string>('browse_file');
+        setSelectedScript(filePath);
+        setOutput(prev => prev + `Selected script: ${filePath}\n`);
+      }
     } catch (error) {
       console.error('File selection cancelled or failed:', error);
     }
@@ -272,21 +368,38 @@ function App() {
   const handleRepair = async () => {
     try {
       setOutput((p) => p + 'Repairing dependencies...\n');
-      await invoke<string>('setup_python_env');
-      const statusesJson = await invoke<string>('check_python_deps');
-      const statuses: DepStatus[] = JSON.parse(statusesJson);
-      setDeps(statuses);
-      const missingCount = statuses.filter(s => !s.installed).length;
-      const okAll = missingCount === 0;
-      setOutput((p) => p + (okAll ? 'All dependencies installed.\n' : 'Some dependencies are missing.\n'));
-      setEnvStatus({
-        python_env_status: 'ok',
-        python_env_message: 'Python environment ready',
-        venv_status: okAll ? 'ok' : 'warn',
-        venv_message: okAll
-          ? 'Virtual environment ready'
-          : `Virtual environment ready; ${missingCount} dependenc${missingCount === 1 ? 'y' : 'ies'} missing`,
-      });
+      if (isBrowserPreview) {
+        // Simulate repair success
+        const simulatedDeps: DepStatus[] = [
+          { name: 'pandas', installed: true, version: '2.2.2' },
+          { name: 'openpyxl', installed: true, version: '3.1.2' },
+          { name: 'colorama', installed: true, version: '0.4.6' },
+        ];
+        setDeps(simulatedDeps);
+        setOutput((p) => p + 'All dependencies installed.\n');
+        setEnvStatus({
+          python_env_status: 'ok',
+          python_env_message: 'Python environment ready',
+          venv_status: 'ok',
+          venv_message: 'Virtual environment ready',
+        });
+      } else {
+        await invoke<string>('setup_python_env');
+        const statusesJson = await invoke<string>('check_python_deps');
+        const statuses: DepStatus[] = JSON.parse(statusesJson);
+        setDeps(statuses);
+        const missingCount = statuses.filter(s => !s.installed).length;
+        const okAll = missingCount === 0;
+        setOutput((p) => p + (okAll ? 'All dependencies installed.\n' : 'Some dependencies are missing.\n'));
+        setEnvStatus({
+          python_env_status: 'ok',
+          python_env_message: 'Python environment ready',
+          venv_status: okAll ? 'ok' : 'warn',
+          venv_message: okAll
+            ? 'Virtual environment ready'
+            : `Virtual environment ready; ${missingCount} dependenc${missingCount === 1 ? 'y' : 'ies'} missing`,
+        });
+      }
     } catch (err: any) {
       setOutput((p) => p + `Repair failed: ${err}\n`);
       setEnvStatus({
@@ -305,6 +418,23 @@ function App() {
     logPrefix?: string
   ): Promise<{ name: string; exists: boolean }[] | null> => {
     try {
+      if (isBrowserPreview) {
+        // Skip backend calls; provide a stable, positive state matching each script
+        const isSnyk = scriptPath.toLowerCase().includes('snyk');
+        const files = isSnyk
+          ? [
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Vulnerability tracker.xlsx', exists: true },
+            ]
+          : [
+              { name: 'DataDome Bots - Block or Whitelist.xlsx', exists: true },
+              { name: 'DataDome_Export_AI_agents_YYYY-MM-DD.xlsx', exists: true },
+              { name: 'DataDome_Export_verified_bots_YYYY-MM-DD.xlsx', exists: true },
+            ];
+        setRequiredFilesStatus(files);
+        return files;
+      }
       let analyzedFiles: { name: string; path: string }[] = [];
       try {
         const analyzedJson = await invoke<string>('analyze_required_files', {
@@ -362,6 +492,22 @@ function App() {
     workingDir?: string
   ): Promise<{ name: string; exists: boolean }[] | null> => {
     try {
+      if (isBrowserPreview) {
+        const isSnyk = scriptPath.toLowerCase().includes('snyk');
+        const files = isSnyk
+          ? [
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Vulnerability tracker.xlsx', exists: true },
+            ]
+          : [
+              { name: 'DataDome Bots - Block or Whitelist.xlsx', exists: true },
+              { name: 'DataDome_Export_AI_agents_YYYY-MM-DD.xlsx', exists: true },
+              { name: 'DataDome_Export_verified_bots_YYYY-MM-DD.xlsx', exists: true },
+            ];
+        setRequiredFilesStatus(files);
+        return files;
+      }
       let analyzedFiles: { name: string; path: string }[] = [];
       try {
         const analyzedJson = await invoke<string>('analyze_required_files', {
@@ -460,8 +606,17 @@ function App() {
         debounceTimer.current = null;
       }
       
-      const statusesJson = await invoke<string>('check_python_deps');
-      const statuses: DepStatus[] = JSON.parse(statusesJson);
+      let statuses: DepStatus[];
+      if (isBrowserPreview) {
+        statuses = [
+          { name: 'pandas', installed: true, version: '2.2.2' },
+          { name: 'openpyxl', installed: true, version: '3.1.2' },
+          { name: 'colorama', installed: true, version: '0.4.6' },
+        ];
+      } else {
+        const statusesJson = await invoke<string>('check_python_deps');
+        statuses = JSON.parse(statusesJson);
+      }
       setDeps(statuses);
       const missingDeps = statuses.filter(s => !s.installed);
       

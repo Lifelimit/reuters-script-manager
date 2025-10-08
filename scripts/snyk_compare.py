@@ -23,7 +23,7 @@ init(autoreset=True)
 def safe_print(text):
     """Print text with Unicode fallback for subprocess context, and colorize checkmarks when possible."""
     try:
-        # If there are no ANSI codes already, colorize checkmarks inline for terminal output
+        # If there are no ANSI codes already, colorize ✓/✗ inline for terminal output
         if isinstance(text, str) and ('\x1b[' not in text):
             text = text.replace('✓', f'{Fore.GREEN}✓{Style.RESET_ALL}').replace('✗', f'{Fore.RED}✗{Style.RESET_ALL}')
         # Force flush to ensure colorama codes are processed immediately
@@ -82,22 +82,29 @@ def extract_snyk_id(url):
             return lower_url[lower_url.find('snyk-'):].strip()
     return ''
 
-def extract_url_from_hyperlink(hyperlink_formula):
-    """Extract the actual URL from a HYPERLINK formula."""
-    if not isinstance(hyperlink_formula, str) or not hyperlink_formula.strip().upper().startswith('=HYPERLINK('):
-        return hyperlink_formula
+def extract_url_from_hyperlink(hyperlink_data):
+    """Extract the actual URL from either a HYPERLINK formula or native hyperlink tuple."""
+    # Handle native hyperlink tuples (display_text, url)
+    if isinstance(hyperlink_data, tuple) and len(hyperlink_data) == 2:
+        display_text, url = hyperlink_data
+        return url if url else display_text
     
-    try:
-        # Extract content between =HYPERLINK( and )
-        inner = hyperlink_formula[len('=HYPERLINK('):-1]
-        # Split by comma and take the first part (the URL)
-        url_part = inner.split(',')[0].strip()
-        # Remove quotes
-        if url_part.startswith('"') and url_part.endswith('"'):
-            url_part = url_part[1:-1]
-        return url_part
-    except:
-        return hyperlink_formula
+    # Handle old HYPERLINK formula format
+    if isinstance(hyperlink_data, str) and hyperlink_data.strip().upper().startswith('=HYPERLINK('):
+        try:
+            # Extract content between =HYPERLINK( and )
+            inner = hyperlink_data[len('=HYPERLINK('):-1]
+            # Split by comma and take the first part (the URL)
+            url_part = inner.split(',')[0].strip()
+            # Remove quotes
+            if url_part.startswith('"') and url_part.endswith('"'):
+                url_part = url_part[1:-1]
+            return url_part
+        except:
+            return hyperlink_data
+    
+    # Return as-is for plain strings or other formats
+    return hyperlink_data
 
 def _parse_ticket_cell_value(cell):
     """Extract display text and URL from a tracker 'Ticket link' cell.
@@ -182,7 +189,7 @@ def find_snyk_reports(directory, identifier="snyk"):
     if not report_files:
         return None, None
 
-    # Sort by date (newest first)
+    # Sort by date (newest first), which correctly handles dates like 11/09/2025 vs 04/09/2025.
     report_files.sort(key=lambda x: x[0], reverse=True)
 
     newest_file = report_files[0][1]
@@ -203,7 +210,7 @@ def find_latest_tracker_file(directory, identifier="tracker"):
                     latest_time = mod_time
                     latest_file = file_path
             except OSError:
-                continue
+                continue # Ignore files that might be deleted during script run
     return latest_file
 
 def validate_required_sheets(old_file, new_file, tracker_file):
@@ -304,6 +311,7 @@ def process_reports(old_file, new_file, tracker_file):
 
         print(f"  - Reading new report: '{original_renamed_path}'")
 
+        # These checks are now redundant due to pre-flight validation, but kept for safety
         if not new_sheet_name:
             print(f"\n[-] Error: Could not find sheet '{REPO_SHEET_NAME}' in '{original_renamed_path}'.")
             os.rename(original_renamed_path, new_file)
@@ -350,7 +358,7 @@ def process_reports(old_file, new_file, tracker_file):
         if tracker_file:
             print("  - Cross-referencing with Vulnerability Tracker file...")
             try:
-                # Identify tracker sheet
+                # Identify tracker sheet (prefer 'Tickets', fall back to 'Vulnerability Tracker')
                 book_tracker = load_workbook(tracker_file, data_only=False)
                 tracker_sheet_name = find_sheet_name(book_tracker, TRACKER_DATA_SHEET_NAME) or \
                                      find_sheet_name(book_tracker, TRACKER_SHEET_NAME)
@@ -373,6 +381,7 @@ def process_reports(old_file, new_file, tracker_file):
                             if display_text and (link_target or str(display_text).strip()):
                                 ticket_map[key] = (display_text, link_target)
 
+                        # Map by exact Issue URL (case-insensitive)
                         issue_keys = new_items_df['ISSUE_URL'].astype(str).str.strip().str.lower()
                         ticket_data = issue_keys.map(ticket_map)
                         print(f"  - Success: Found and mapped {ticket_data.notna().sum()} existing tickets from the tracker.")
@@ -386,68 +395,84 @@ def process_reports(old_file, new_file, tracker_file):
 
         # Convert mapped data (tuples/strings) into Excel HYPERLINK formulas
         def create_hyperlink_from_tuple(data):
-            def _esc(s):
-                return str(s).replace('"', '""')
+            """Returns tuple (display_text, url) for native Excel hyperlinks, or just text for non-links"""
             if isinstance(data, tuple):
                 text, link = data
-                if link:
-                    return f'=HYPERLINK("{_esc(link)}","{_esc(text)}")'
+                if link and str(link).strip().lower().startswith('http'):
+                    return (str(text) if text is not None else str(link), str(link).strip())
+                # If no explicit link but text looks like a URL, link to itself
                 if isinstance(text, str) and text.strip().lower().startswith('http'):
                     s = text.strip()
-                    return f'=HYPERLINK("{_esc(s)}","{_esc(text)}")'
+                    return (str(text), s)
                 return str(text) if text is not None else ''
             if isinstance(data, str):
                 s = data.strip()
                 if not s:
                     return ''
-                if s.startswith('=HYPERLINK('):
-                    return s
                 if s.lower().startswith('http'):
-                    return f'=HYPERLINK("{_esc(s)}","{_esc(s)}")'
+                    return (s, s)
                 return s
-            return ''
+            return '' # Return empty string for NaN/no match
 
+        # Convert URLs to hyperlinks for Issue URL columns
         def create_url_hyperlink(url):
+            """Returns tuple (display_text, url) for native Excel hyperlinks, or just text for non-links"""
             if not url or not isinstance(url, str):
                 return url
             url = str(url).strip()
             if not url or not url.lower().startswith('http'):
                 return url
-            if url.startswith('=HYPERLINK('):
-                return url
-            escaped_url = url.replace('"', '""')
-            return f'=HYPERLINK("{escaped_url}","{escaped_url}")'
+            return (url, url)
 
+        # Remove helper key if present before writing
+        # Ensure no leftover helper keys
         if '__IssueKey' in new_items_df.columns:
             new_items_df = new_items_df.drop(columns=['__IssueKey'])
         ticket_col_pos = new_items_df.columns.get_loc('ID') + 1 if 'ID' in new_items_df.columns else 0
         new_items_df.insert(ticket_col_pos, 'Ticket', ticket_data.apply(create_hyperlink_from_tuple))
         
+        # Convert Issue URL column to hyperlinks
         if 'ISSUE_URL' in new_items_df.columns:
             new_items_df['ISSUE_URL'] = new_items_df['ISSUE_URL'].apply(create_url_hyperlink)
         
         print("  - Added 'Ticket' column and converted ticket info to hyperlinks.")
         print("  - Converted Issue URL column to hyperlinks.")
         
+        # Apply hyperlink formatting to cells with HYPERLINK formulas
         def apply_hyperlink_formatting(sheet, df, ticket_col_name='Ticket', issue_url_col_name='ISSUE_URL'):
-            hyperlink_font = Font(color="3465a4", underline="single")
+            """Apply native Excel hyperlinks to cells that contain hyperlink tuples"""
+            hyperlink_font = Font(color="3465a4", underline="single")  # Custom color with underline
             
+            # Process Ticket column
             if ticket_col_name in df.columns:
                 ticket_col_idx = df.columns.get_loc(ticket_col_name) + 1
-                for row_idx in range(2, len(df) + 2):
+                for row_idx in range(2, len(df) + 2):  # Start from row 2 (after header)
                     cell = sheet.cell(row=row_idx, column=ticket_col_idx)
-                    if cell.value and str(cell.value).startswith('=HYPERLINK('):
-                        cell.font = hyperlink_font
+                    df_row_idx = row_idx - 2  # Convert to DataFrame index
+                    if df_row_idx < len(df):
+                        original_value = df.iloc[df_row_idx][ticket_col_name]
+                        if isinstance(original_value, tuple) and len(original_value) == 2:
+                            display_text, url = original_value
+                            cell.value = display_text
+                            cell.hyperlink = url
+                            cell.font = hyperlink_font
             
+            # Process Issue URL column
             if issue_url_col_name in df.columns:
                 url_col_idx = df.columns.get_loc(issue_url_col_name) + 1
-                for row_idx in range(2, len(df) + 2):
+                for row_idx in range(2, len(df) + 2):  # Start from row 2 (after header)
                     cell = sheet.cell(row=row_idx, column=url_col_idx)
-                    if cell.value and str(cell.value).startswith('=HYPERLINK('):
-                        cell.font = hyperlink_font
+                    df_row_idx = row_idx - 2  # Convert to DataFrame index
+                    if df_row_idx < len(df):
+                        original_value = df.iloc[df_row_idx][issue_url_col_name]
+                        if isinstance(original_value, tuple) and len(original_value) == 2:
+                            display_text, url = original_value
+                            cell.value = display_text
+                            cell.hyperlink = url
+                            cell.font = hyperlink_font
 
         print("\n--- Step 5: Creating 'Working sheet' ---")
-        book = load_workbook(original_renamed_path, data_only=True)
+        book = load_workbook(original_renamed_path, data_only=False)
         source_sheet = book[new_sheet_name]
 
         existing_working_sheet_name = find_sheet_name(book, WORKING_SHEET_NAME)
@@ -456,12 +481,17 @@ def process_reports(old_file, new_file, tracker_file):
         
         target_sheet = book.copy_worksheet(source_sheet)
         target_sheet.title = WORKING_SHEET_NAME
-        target_sheet.sheet_properties.tabColor = "00FF00"
+        target_sheet.sheet_properties.tabColor = "00FF00"  # Green color
         target_sheet.delete_rows(2, target_sheet.max_row + 1)
         target_sheet.insert_cols(ticket_col_pos + 1)
         target_sheet.cell(row=1, column=ticket_col_pos + 1).value = 'Ticket'
 
-        for r in dataframe_to_rows(new_items_df, index=False, header=False):
+        # Create a display version of the DataFrame for writing to Excel
+        display_df = new_items_df.copy()
+        for col in display_df.columns:
+            display_df[col] = display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
+        
+        for r in dataframe_to_rows(display_df, index=False, header=False):
             target_sheet.append(r)
         print(f"  - Wrote {len(new_items_df)} items to the sheet.")
         
@@ -496,8 +526,10 @@ def process_reports(old_file, new_file, tracker_file):
             try:
                 s = '' if val is None else str(val)
                 s = s.strip()
+                # For HYPERLINK formulas, extract the display text (second parameter)
                 if s.upper().startswith('=HYPERLINK('):
                     try:
+                        # Extract the display text from =HYPERLINK("url","text")
                         inner = s[len('=HYPERLINK('):-1]
                         parts = []
                         current = ''
@@ -513,6 +545,7 @@ def process_reports(old_file, new_file, tracker_file):
                                 current += ch
                         if current:
                             parts.append(current.strip())
+                        # Use display text (2nd parameter) if available, otherwise URL (1st parameter)
                         if len(parts) >= 2:
                             text_part = parts[1]
                             if text_part.startswith('"') and text_part.endswith('"'):
@@ -546,19 +579,24 @@ def process_reports(old_file, new_file, tracker_file):
                             max_length = l
                     except:
                         pass
+                # Standard padding for Excel/Google Sheets
                 adjusted_width = (max_length + 2)
                 target_sheet.column_dimensions[column_letter].width = adjusted_width
         
+        # Apply hyperlink formatting to Working sheet
         apply_hyperlink_formatting(target_sheet, new_items_df)
         
+        # Hide empty CVE_URL column if it exists and is empty, but ensure CVE column stays visible
         if 'CVE_URL' in new_items_df.columns:
             cve_url_col_idx = new_items_df.columns.get_loc('CVE_URL') + 1
             cve_url_col_letter = get_column_letter(cve_url_col_idx)
+            # Check if CVE_URL column is mostly empty
             cve_url_values = new_items_df['CVE_URL'].dropna()
-            if len(cve_url_values) == 0:
+            if len(cve_url_values) == 0:  # Column is completely empty
                 target_sheet.column_dimensions[cve_url_col_letter].hidden = True
                 print("  - Hid empty CVE_URL column to avoid confusion.")
         
+        # Ensure CVE column is always visible
         if 'CVE' in new_items_df.columns:
             cve_col_idx = new_items_df.columns.get_loc('CVE') + 1
             cve_col_letter = get_column_letter(cve_col_idx)
@@ -579,18 +617,20 @@ def process_reports(old_file, new_file, tracker_file):
             cve = str(row.get('CVE', ''))
             cwe = str(row.get('CWE', ''))
             
+            # Clean up CVE - remove existing brackets if present, then add them back
             if cve not in ['nan', '']:
                 cve_clean = cve.strip()
                 if cve_clean.startswith('["') and cve_clean.endswith('"]'):
-                    cve_clean = cve_clean[2:-2]
+                    cve_clean = cve_clean[2:-2]  # Remove existing brackets
                 cve = f'["{cve_clean}"]'
             else:
                 cve = ''
             
+            # Clean up CWE - remove existing brackets if present, then add them back
             if cwe not in ['nan', '']:
                 cwe_clean = cwe.strip()
                 if cwe_clean.startswith('["') and cwe_clean.endswith('"]'):
-                    cwe_clean = cwe_clean[2:-2]
+                    cwe_clean = cwe_clean[2:-2]  # Remove existing brackets
                 cwe = f'["{cwe_clean}"]'
             else:
                 cwe = ''
@@ -599,9 +639,13 @@ def process_reports(old_file, new_file, tracker_file):
                 return f"{cve} / {cwe}"
             return cve or cwe
 
+
+
         pending_tracker_df = pd.DataFrame()
         if not tracker_source_df.empty:
             tracker_df = pd.DataFrame()
+            # Determine report date (prefer from originally selected filename)
+            # Prefer date from filename; fallback to file modified date; then today's date
             report_date_dt = (
                 extract_report_date_from_filename(selected_new_file_path)
                 or extract_report_date_from_filename(original_renamed_path or new_file)
@@ -632,8 +676,14 @@ def process_reports(old_file, new_file, tracker_file):
                 book.remove(book[existing_tracker_sheet_name])
             
             tracker_sheet = book.create_sheet(TRACKER_SHEET_NAME)
-            tracker_sheet.sheet_properties.tabColor = "ADD8E6"
-            for r in dataframe_to_rows(tracker_df, index=False, header=True):
+            tracker_sheet.sheet_properties.tabColor = "ADD8E6"  # Light blue color
+            
+            # Create a display version of the tracker DataFrame for writing to Excel
+            tracker_display_df = tracker_df.copy()
+            for col in tracker_display_df.columns:
+                tracker_display_df[col] = tracker_display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
+            
+            for r in dataframe_to_rows(tracker_display_df, index=False, header=True):
                 tracker_sheet.append(r)
             print("  - Populated tracker with data.")
             
@@ -641,47 +691,25 @@ def process_reports(old_file, new_file, tracker_file):
             for cell in tracker_sheet[1]:
                 cell.font = bold_font
             
+            # Ensure 'Report date' cells are populated and formatted (MM/DD/YYYY, centered)
             if 'Report date' in tracker_df.columns:
                 rd_col_idx = tracker_df.columns.get_loc('Report date') + 1
                 for row_idx in range(2, tracker_sheet.max_row + 1):
                     rd_cell = tracker_sheet.cell(row=row_idx, column=rd_col_idx)
+                    # Always set the report date, don't check if empty
                     rd_cell.value = report_date_dt
                     rd_cell.number_format = 'MM/DD/YYYY'
                     rd_cell.alignment = Alignment(horizontal='center')
 
             def _display_len(val):
                 try:
+                    # Handle tuple values (display_text, url) from native hyperlinks
+                    if isinstance(val, tuple) and len(val) == 2:
+                        display_text, url = val
+                        return max(len(str(display_text)), 0)
+                    
                     s = '' if val is None else str(val)
                     s = s.strip()
-                    if s.upper().startswith('=HYPERLINK('):
-                        try:
-                            inner = s[len('=HYPERLINK('):-1]
-                            parts = []
-                            current = ''
-                            in_quotes = False
-                            for ch in inner:
-                                if ch == '"':
-                                    in_quotes = not in_quotes
-                                    current += ch
-                                elif ch == ',' and not in_quotes:
-                                    parts.append(current.strip())
-                                    current = ''
-                                else:
-                                    current += ch
-                            if current:
-                                parts.append(current.strip())
-                            if len(parts) >= 2:
-                                text_part = parts[1]
-                                if text_part.startswith('"') and text_part.endswith('"'):
-                                    text_part = text_part[1:-1]
-                                return max(len(text_part), 0)
-                            elif len(parts) >= 1:
-                                url_part = parts[0]
-                                if url_part.startswith('"') and url_part.endswith('"'):
-                                    url_part = url_part[1:-1]
-                                return max(len(url_part), 0)
-                        except:
-                            pass
                     return max(len(s), 0)
                 except Exception:
                     return 0
@@ -696,7 +724,7 @@ def process_reports(old_file, new_file, tracker_file):
                     for cell in tracker_sheet[column_letter][1:]:
                         cell.number_format = 'MM/DD/YYYY'
                         cell.alignment = Alignment(horizontal='center')
-                elif header != 'Issue URL':
+                elif header != 'Issue URL':  # Center align all columns except Issue URL
                     for cell in tracker_sheet[column_letter][1:]:
                         cell.alignment = Alignment(horizontal='center')
                 
@@ -709,13 +737,16 @@ def process_reports(old_file, new_file, tracker_file):
                     except:
                         pass
                 
+                # Standard width calculation for all columns
                 adjusted_width = (max_length + 2)
                 
                 tracker_sheet.column_dimensions[column_letter].width = adjusted_width
+            # Apply hyperlink formatting to Vulnerability Tracker sheet
             apply_hyperlink_formatting(tracker_sheet, tracker_df, 'Ticket link', 'Issue URL')
             
             print("  - Formatted tracker sheet.")
             print(f"  - Success: '{TRACKER_SHEET_NAME}' created.")
+            # Compute the subset of tracker rows that still need tickets
             try:
                 needs_ticket_mask = tracker_source_df['Ticket'].astype(str).str.strip() == ''
                 pending_tracker_df = tracker_df[needs_ticket_mask].copy()
@@ -729,6 +760,7 @@ def process_reports(old_file, new_file, tracker_file):
         book.save(new_file)
         print(f"  - Success: Saved workbook to '{new_file}'")
         
+        # Backup the original tracker file if provided
         tracker_original_path = None
         if tracker_file:
             tracker_base, tracker_ext = os.path.splitext(tracker_file)
@@ -738,10 +770,11 @@ def process_reports(old_file, new_file, tracker_file):
             shutil.copy2(tracker_file, tracker_original_path)
             print(f"  - Backed up original tracker to '{tracker_original_path}'")
 
+        # Append missing-ticket rows to the selected external tracker file (if provided)
         if tracker_file and not pending_tracker_df.empty:
             try:
                 print("\n--- Step 7b: Appending new items without tickets to external tracker ---")
-                book_ext = load_workbook(tracker_file, data_only=True)
+                book_ext = load_workbook(tracker_file, data_only=False)
                 tracker_sheet_name_ext = find_sheet_name(book_ext, TRACKER_DATA_SHEET_NAME) or \
                                          find_sheet_name(book_ext, TRACKER_SHEET_NAME)
                 if not tracker_sheet_name_ext:
@@ -751,6 +784,7 @@ def process_reports(old_file, new_file, tracker_file):
                 else:
                     ws_ext = book_ext[tracker_sheet_name_ext]
 
+                # Build existing Issue URL set to avoid duplicates
                 headers_ext = [cell.value for cell in ws_ext[1]] if ws_ext.max_row >= 1 else list(tracker_df.columns)
                 def _header_idx(headers, name):
                     try:
@@ -768,8 +802,10 @@ def process_reports(old_file, new_file, tracker_file):
                 else:
                     existing_urls = set()
 
+                # Ensure column order matches external sheet headers
                 ordered_cols = headers_ext if set(headers_ext) == set(tracker_df.columns) else list(tracker_df.columns)
                 appended = 0
+                # Center align and format date columns in external tracker if present
                 gp_idx = _header_idx(headers_ext, 'Grace Period')
                 if gp_idx:
                     gp_letter = get_column_letter(gp_idx)
@@ -786,26 +822,39 @@ def process_reports(old_file, new_file, tracker_file):
                     issue_url_val = str(r.get('Issue URL', '')).strip().lower()
                     if issue_url_val and issue_url_val in existing_urls:
                         continue
+                    # Ensure Report date is set from filename-derived date and convert Issue URL to hyperlink
                     row_vals = []
+                    issue_url_hyperlink_data = None
                     for col in ordered_cols:
                         if col == 'Report date':
                             row_vals.append(report_date_dt)
                         elif col == 'Issue URL':
-                            row_vals.append(create_url_hyperlink(r.get(col, '')))
+                            hyperlink_data = create_url_hyperlink(r.get(col, ''))
+                            if isinstance(hyperlink_data, tuple):
+                                issue_url_hyperlink_data = hyperlink_data
+                                row_vals.append(hyperlink_data[0])  # Display text
+                            else:
+                                row_vals.append(hyperlink_data)
                         else:
                             row_vals.append(r.get(col, ''))
                     ws_ext.append(row_vals)
+                    # Apply formatting to the just-appended row
                     new_row_idx = ws_ext.max_row
+                    # Center all cells in the appended row except Issue URL
                     issue_url_col_idx = _header_idx(ordered_cols, 'Issue URL')
 
-                    if issue_url_col_idx:
+                    # Apply native hyperlink to the Issue URL cell if it's a hyperlink
+                    if issue_url_col_idx and issue_url_hyperlink_data:
                         issue_url_cell = ws_ext.cell(row=new_row_idx, column=issue_url_col_idx)
-                        if issue_url_cell.value and str(issue_url_cell.value).startswith('=HYPERLINK('):
-                            issue_url_cell.font = Font(color="3465a4", underline="single")
+                        display_text, url = issue_url_hyperlink_data
+                        issue_url_cell.value = display_text
+                        issue_url_cell.hyperlink = url
+                        issue_url_cell.font = Font(color="3465a4", underline="single")
 
                     for c in range(1, len(ordered_cols) + 1):
-                        if c != issue_url_col_idx:
+                        if c != issue_url_col_idx:  # Skip centering Issue URL column
                             ws_ext.cell(row=new_row_idx, column=c).alignment = Alignment(horizontal='center')
+                    # Apply date formats to date columns
                     if gp_idx:
                         new_row_idx = ws_ext.max_row
                         gp_cell = ws_ext.cell(row=new_row_idx, column=gp_idx)
@@ -831,6 +880,7 @@ def process_reports(old_file, new_file, tracker_file):
         report_filename = f"{base}-Ticket-Template.txt"
         vulnerability_texts = []
 
+        # Only include items that do NOT already have a ticket link
         pending_tickets_df = pd.DataFrame()
         if 'Ticket' in tracker_source_df.columns and not tracker_source_df.empty:
             pending_tickets_df = tracker_source_df[tracker_source_df['Ticket'].astype(str).str.strip() == '']
@@ -841,6 +891,7 @@ def process_reports(old_file, new_file, tracker_file):
                 grace_period_str = gp_dt.strftime('%m/%d/%Y') if pd.notna(gp_dt) else 'N/A'
                 cve_cwe_text = format_cve_cwe(row)
                 
+                # Extract clean URL from HYPERLINK formula if present
                 issue_url = extract_url_from_hyperlink(row.get('ISSUE_URL', 'N/A'))
                 
                 text_block = f"""A recent Snyk scan, uncovered a vulnerability within the {row.get('PROJECT_NAME', 'N/A')} GitHub repo, which has now been labelled {row.get('TR SEVERITY', 'N/A')} by the Applied Security Team. The details from their report said the following: 
@@ -864,7 +915,9 @@ def process_reports(old_file, new_file, tracker_file):
             final_message_details = f"Original file renamed to:\n'{original_renamed_path}'"
             ticket_status_message = "\n\nAll new vulnerabilities already have tickets. No ticket template required."
 
+        # Post-processing: archive input files into a folder
         try:
+            # Prefer date parsed from the originally selected NEW report filename
             parsed = extract_report_date_from_filename(selected_new_file_path)
             if parsed:
                 ts = parsed.strftime('%Y-%m-%d')
@@ -877,18 +930,23 @@ def process_reports(old_file, new_file, tracker_file):
         archive_dir = os.path.join(ARCHIVE_DIR, f"Snyk Report - {ts}")
         try:
             os.makedirs(archive_dir, exist_ok=True)
+            # Move old report if it exists and is not the tracker
             if old_file and os.path.exists(old_file) and (not tracker_file or os.path.abspath(old_file) != os.path.abspath(tracker_file)):
                 dest = os.path.join(archive_dir, os.path.basename(old_file))
                 if os.path.abspath(old_file) != os.path.abspath(new_file):
                     shutil.move(old_file, dest)
 
+            # Move the original new report that we backed up earlier
             if original_renamed_path and os.path.exists(original_renamed_path):
+                # Use the original filename for the archived copy, not the '-original' version
                 original_basename = os.path.basename(new_file)
                 dest = os.path.join(archive_dir, original_basename)
                 if os.path.abspath(original_renamed_path) != os.path.abspath(new_file):
                     shutil.move(original_renamed_path, dest)
             
+            # Move the original tracker backup to the archive folder
             if tracker_original_path and os.path.exists(tracker_original_path):
+                # Use the original filename for the archived copy, not the '-original' version
                 original_basename = os.path.basename(tracker_file)
                 dest = os.path.join(archive_dir, original_basename)
                 shutil.move(tracker_original_path, dest)
@@ -896,6 +954,7 @@ def process_reports(old_file, new_file, tracker_file):
         except Exception as e:
             print(f"  - Warning: Could not archive input files: {e}")
 
+        # Calculate detailed vulnerability statistics
         total_new = len(new_items_df)
         docker_count = 0
         non_docker_count = 0
@@ -907,6 +966,7 @@ def process_reports(old_file, new_file, tracker_file):
             docker_count = docker_mask.sum()
             non_docker_count = total_new - docker_count
             
+            # Calculate critical vulnerability breakdown
             if 'TR SEVERITY' in new_items_df.columns:
                 critical_mask = new_items_df['TR SEVERITY'] == 'Critical'
                 critical_docker_count = (docker_mask & critical_mask).sum()
@@ -919,6 +979,7 @@ def process_reports(old_file, new_file, tracker_file):
         print("     PROCESS COMPLETE!")
         print("="*60 + Style.RESET_ALL)
         
+        # Enhanced vulnerability summary
         colored_print(f"\nVulnerability Summary:", Fore.YELLOW)
         safe_print(f"  • Total new vulnerabilities: {total_new}")
         
@@ -956,6 +1017,7 @@ def main():
     warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
     setup_directories()
 
+    # --- Automatic File Discovery ---
     colored_print("-> Searching for the latest Snyk report files in the script's directory...", Fore.CYAN)
     old_file, new_file = find_snyk_reports(WORKING_DIR, identifier="snyk")
 
@@ -963,6 +1025,7 @@ def main():
         print("\n[-] Error: Could not find any Snyk report files in the script's folder. Please make sure they are present and contain a date (YYYY-MM-DD).")
         return
 
+    # The find_snyk_reports function sorts by date descending, ensuring the newest is 'new_file'
     print(f"  - Using NEW report (most recent): {os.path.basename(new_file)}")
     if old_file:
         print(f"  - Using OLD report (previous): {os.path.basename(old_file)}")
