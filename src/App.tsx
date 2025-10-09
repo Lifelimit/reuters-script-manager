@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { listen } from '@tauri-apps/api/event';
@@ -81,22 +82,17 @@ function App() {
     
     try {
       if (isBrowserPreview) {
-        // Import documentation directly in preview mode
-        let content: string = '';
+        // Load documentation using Vite glob in preview mode
+        const docs = import.meta.glob('../Documents/**/*.md', { as: 'raw', eager: true });
+        let content: string | undefined;
         if (doc === 'readme') {
-          const m = await import('../Documents/Main/README.md?raw');
-          content = m.default || (m as any);
-          setDocModal({ title, file, content });
-          return;
-        }
-        if (selectedLabel === 'DataDome Compare') {
-          const m = await import('../Documents/DataDome Verified Bots Compare/DataDome_Compare_Script_User_Guide.md?raw');
-          content = m.default || (m as any);
+          content = docs['../Documents/Main/README.md'] as string | undefined;
+        } else if (selectedLabel === 'DataDome Compare') {
+          content = docs['../Documents/DataDome Verified Bots Compare/DataDome_Compare_Script_User_Guide.md'] as string | undefined;
         } else {
-          const m = await import('../Documents/Snyk Report Compare/Snyk_Compare_Script_User_Guide.md?raw');
-          content = m.default || (m as any);
+          content = docs['../Documents/Snyk Report Compare/Snyk_Compare_Script_User_Guide.md'] as string | undefined;
         }
-        setDocModal({ title, file, content });
+        setDocModal({ title, file, content: content ?? 'Failed to load documentation: not found' });
       } else {
         const content = await invoke<string>('read_documentation_file', {
           doc_path: file,
@@ -670,7 +666,7 @@ function App() {
         </div>
         
         {/* Right Panel - Main Content */}
-        <div className="flex-1 flex flex-col bg-app-darker">
+        <div className="flex-1 min-h-0 flex flex-col bg-app-darker">
           <ScriptControlPanel
             selectedScript={selectedScript}
             onScriptSelect={handleScriptSelect}

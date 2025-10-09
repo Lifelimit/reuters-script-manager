@@ -57,13 +57,27 @@ TRACKER_DATA_SHEET_NAME = 'Tickets' # Preferred sheet to read from in the tracke
 UNIQUE_ID_COLUMN = 'ISSUE_URL'
 # --- Directory Setup ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Working directory is the Snyk folder in the parent directory
-WORKING_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'Snyk Report Compare')
-ARCHIVE_DIR = os.path.join(WORKING_DIR, '_archive')
+# Working directory is the Snyk folder in the parent directory; allow env override
+WORKING_DIR = os.getenv('WORKING_DIR') or os.path.join(os.path.dirname(SCRIPT_DIR), 'Snyk Report Compare')
+ARCHIVE_DIR = os.getenv('ARCHIVE_DIR') or os.path.join(WORKING_DIR, '_archive')
 
 def setup_directories():
-    """Create the archive directory if it doesn't exist."""
-    os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    """Create the archive directory if it doesn't exist and check write permissions."""
+    try:
+        os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    except Exception as e:
+        safe_print(f"[!] Warning: Could not create archive directory '{ARCHIVE_DIR}': {e}")
+    # Check write permission by attempting to create and remove a temp file
+    try:
+        test_path = os.path.join(ARCHIVE_DIR, f".perm_check_{int(datetime.now().timestamp())}")
+        with open(test_path, 'w') as f:
+            f.write('ok')
+        os.remove(test_path)
+        safe_print(f"[✓] Archive directory ready: {ARCHIVE_DIR}")
+        return True
+    except Exception as e:
+        safe_print(f"[!] Warning: Archive directory not writable: {ARCHIVE_DIR} ({e})")
+        return False
 
 def find_sheet_name(book, target_name):
     """Finds a sheet name in a workbook object case-insensitively."""
@@ -928,31 +942,42 @@ def process_reports(old_file, new_file, tracker_file):
             ts = datetime.now().strftime('%Y-%m-%d')
         
         archive_dir = os.path.join(ARCHIVE_DIR, f"Snyk Report - {ts}")
+        # Ensure archive folder exists
         try:
             os.makedirs(archive_dir, exist_ok=True)
-            # Move old report if it exists and is not the tracker
-            if old_file and os.path.exists(old_file) and (not tracker_file or os.path.abspath(old_file) != os.path.abspath(tracker_file)):
-                dest = os.path.join(archive_dir, os.path.basename(old_file))
-                if os.path.abspath(old_file) != os.path.abspath(new_file):
-                    shutil.move(old_file, dest)
+        except Exception as e:
+            print(f"  - Warning: Could not ensure archive folder '{archive_dir}': {e}")
 
-            # Move the original new report that we backed up earlier
-            if original_renamed_path and os.path.exists(original_renamed_path):
-                # Use the original filename for the archived copy, not the '-original' version
-                original_basename = os.path.basename(new_file)
-                dest = os.path.join(archive_dir, original_basename)
-                if os.path.abspath(original_renamed_path) != os.path.abspath(new_file):
+        # Move old report if it exists and is not the tracker
+        if old_file and os.path.exists(old_file) and (not tracker_file or os.path.abspath(old_file) != os.path.abspath(tracker_file)):
+            dest = os.path.join(archive_dir, os.path.basename(old_file))
+            if os.path.abspath(old_file) != os.path.abspath(new_file):
+                try:
+                    shutil.move(old_file, dest)
+                except Exception as e:
+                    print(f"  - Warning: Could not archive old report '{old_file}': {e}")
+
+        # Move the original new report that we backed up earlier
+        if original_renamed_path and os.path.exists(original_renamed_path):
+            # Use the original filename for the archived copy, not the '-original' version
+            original_basename = os.path.basename(new_file)
+            dest = os.path.join(archive_dir, original_basename)
+            if os.path.abspath(original_renamed_path) != os.path.abspath(new_file):
+                try:
                     shutil.move(original_renamed_path, dest)
-            
-            # Move the original tracker backup to the archive folder
-            if tracker_original_path and os.path.exists(tracker_original_path):
-                # Use the original filename for the archived copy, not the '-original' version
-                original_basename = os.path.basename(tracker_file)
-                dest = os.path.join(archive_dir, original_basename)
+                except Exception as e:
+                    print(f"  - Warning: Could not archive original new report '{original_renamed_path}': {e}")
+        
+        # Move the original tracker backup to the archive folder
+        if tracker_original_path and os.path.exists(tracker_original_path):
+            # Use the original filename for the archived copy, not the '-original' version
+            original_basename = os.path.basename(tracker_file)
+            dest = os.path.join(archive_dir, original_basename)
+            try:
                 shutil.move(tracker_original_path, dest)
                 print(f"  - Moved original tracker backup to archive: '{dest}'")
-        except Exception as e:
-            print(f"  - Warning: Could not archive input files: {e}")
+            except Exception as e:
+                print(f"  - Warning: Could not archive tracker backup '{tracker_original_path}': {e}")
 
         # Calculate detailed vulnerability statistics
         total_new = len(new_items_df)

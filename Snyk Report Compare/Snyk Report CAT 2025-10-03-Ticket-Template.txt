@@ -1,0 +1,25 @@
+A recent Snyk scan, uncovered a vulnerability within the tr/rcom-microsite_kg-updater(main):requirements-binary.txt GitHub repo, which has now been labelled High by the Applied Security Team. The details from their report said the following: 
+
+        - Library: future: 1.0.0
+        - Grace period: 11/30/2025
+        - CVE / CWE: ["CVE-2025-50817"] / ["CWE-427"]
+        - Flaw name: Uncontrolled Search Path Element
+        - More information and how to fix this can be found at: https://app.snyk.io/org/201836_rcom/project/48f39146-2387-4427-a4ad-bcbba6f76241#issue-SNYK-PYTHON-FUTURE-11951438
+
+
+A recent Snyk scan, uncovered a vulnerability within the tr/rcom-microsite_kg-updater(main):requirements-binary.txt GitHub repo, which has now been labelled High by the Applied Security Team. The details from their report said the following: 
+
+        - Library: setuptools: 40.5.0
+        - Grace period: 11/30/2025
+        - CVE / CWE: ["CVE-2024-6345"] / ["CWE-94"]
+        - Flaw name: Improper Control of Generation of Code ('Code Injection')
+        - More information and how to fix this can be found at: https://app.snyk.io/org/201836_rcom/project/48f39146-2387-4427-a4ad-bcbba6f76241#issue-SNYK-PYTHON-SETUPTOOLS-7448482
+
+
+A recent Snyk scan, uncovered a vulnerability within the tr/rcom-microsite_kg-updater(main):requirements-binary.txt GitHub repo, which has now been labelled High by the Applied Security Team. The details from their report said the following: 
+
+        - Library: protobuf: 4.24.4
+        - Grace period: 11/30/2025
+        - CVE / CWE: ["CVE-2025-4565"] / ["CWE-674"]
+        - Flaw name: Uncontrolled Recursion
+        - More information and how to fix this can be found at: https://app.snyk.io/org/201836_rcom/project/48f39146-2387-4427-a4ad-bcbba6f76241#issue-SNYK-PYTHON-PROTOBUF-10364902

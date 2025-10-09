@@ -44,9 +44,9 @@ UNIQUE_ID_COLUMN = 'Name'
 
 # --- Directory Setup ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Working directory is the DataDome folder in the parent directory
-WORKING_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), 'DataDome Verified Bots Compare')
-ARCHIVE_DIR = os.path.join(WORKING_DIR, '_archive')
+# Working directory is the DataDome folder in the parent directory; allow env override
+WORKING_DIR = os.getenv('WORKING_DIR') or os.path.join(os.path.dirname(SCRIPT_DIR), 'DataDome Verified Bots Compare')
+ARCHIVE_DIR = os.getenv('ARCHIVE_DIR') or os.path.join(WORKING_DIR, '_archive')
 
 SHEET_CATEGORY_MAPPING = {
     'Major Search Engine': 'Major Search Engine',
@@ -71,8 +71,21 @@ SHEET_CATEGORY_MAPPING = {
 }
 
 def setup_directories():
-    """Create the archive directory if it doesn't exist."""
-    os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    """Create the archive directory and verify write permissions."""
+    try:
+        os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    except Exception as e:
+        colored_print(f"[!] Warning: Could not create archive directory '{ARCHIVE_DIR}': {e}", Fore.YELLOW)
+    try:
+        test_path = os.path.join(ARCHIVE_DIR, f".perm_check_{int(datetime.now().timestamp())}")
+        with open(test_path, 'w') as f:
+            f.write('ok')
+        os.remove(test_path)
+        colored_print(f"[\u2713] Archive directory ready: {ARCHIVE_DIR}", Fore.GREEN)
+        return True
+    except Exception as e:
+        colored_print(f"[!] Warning: Archive directory not writable: {ARCHIVE_DIR} ({e})", Fore.YELLOW)
+        return False
 
 def normalize_name(name):
     """Normalize bot names for accurate comparison."""
@@ -335,8 +348,14 @@ def main():
         print("\nNo new or renamed bots were found.")
         
         colored_print("\n-> Archiving processed report files...", Fore.YELLOW)
-        shutil.move(ai_agents_file, os.path.join(ARCHIVE_DIR, os.path.basename(ai_agents_file)))
-        shutil.move(verified_bots_file, os.path.join(ARCHIVE_DIR, os.path.basename(verified_bots_file)))
+        try:
+            shutil.move(ai_agents_file, os.path.join(ARCHIVE_DIR, os.path.basename(ai_agents_file)))
+        except Exception as e:
+            colored_print(f"[!] Warning: Could not archive '{ai_agents_file}': {e}", Fore.YELLOW)
+        try:
+            shutil.move(verified_bots_file, os.path.join(ARCHIVE_DIR, os.path.basename(verified_bots_file)))
+        except Exception as e:
+            colored_print(f"[!] Warning: Could not archive '{verified_bots_file}': {e}", Fore.YELLOW)
         colored_print("-> Archiving complete.", Fore.GREEN)
         return
 
@@ -353,8 +372,14 @@ def main():
     create_output_excel(findings_df, output_file)
 
     colored_print("\n-> Archiving processed report files...", Fore.YELLOW)
-    shutil.move(ai_agents_file, os.path.join(ARCHIVE_DIR, os.path.basename(ai_agents_file)))
-    shutil.move(verified_bots_file, os.path.join(ARCHIVE_DIR, os.path.basename(verified_bots_file)))
+    try:
+        shutil.move(ai_agents_file, os.path.join(ARCHIVE_DIR, os.path.basename(ai_agents_file)))
+    except Exception as e:
+        colored_print(f"[!] Warning: Could not archive '{ai_agents_file}': {e}", Fore.YELLOW)
+    try:
+        shutil.move(verified_bots_file, os.path.join(ARCHIVE_DIR, os.path.basename(verified_bots_file)))
+    except Exception as e:
+        colored_print(f"[!] Warning: Could not archive '{verified_bots_file}': {e}", Fore.YELLOW)
     colored_print("-> Archiving complete.", Fore.GREEN)
 
     print("\n" + Fore.GREEN + "="*60)

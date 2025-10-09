@@ -27,6 +27,8 @@ The script requires the following files to be present in the working directory:
 
 > ⚠️ **Important**: All files must be in the same directory as the script for proper execution.
 
+> 📅 **Filename Date Format**: Export filenames should include dates in `YYYY-MM-DD` (or `YYYY_MM_DD`) format so the launcher and script can correctly detect the latest exports.
+
 ---
 
 ## 🚀 Launcher Application Features

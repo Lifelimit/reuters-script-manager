@@ -796,6 +796,49 @@ async fn launch_script(
     // Set working directory to the script's directory so relative file accesses work
     cmd.current_dir(&script_dir);
 
+    // Derive preferred WORKING_DIR similar to metadata analyzer and pass via environment
+    if let Some(fname) = abs_path.file_name().and_then(|s| s.to_str()) {
+        use std::fs::read_dir;
+        let has_xlsx = |dir: &std::path::Path| read_dir(dir).map(|rd| rd.flatten().any(|e| {
+            let n = e.file_name(); let s = n.to_string_lossy();
+            s.ends_with(".xlsx") && !s.starts_with('~') && !s.starts_with('.') && !s.starts_with("._")
+        })).unwrap_or(false);
+
+        // Portable layout folders next to the launcher
+        let (snyk_portable, datadome_portable) = ensure_visible_data_dirs();
+
+        // Dev fallbacks
+        let app_way = script_dir.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+        let workspace_root = app_way.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+        let app_snyk = app_way.join("Snyk Report Compare");
+        let app_datadome = app_way.join("DataDome Verified Bots Compare");
+        let script_snyk = workspace_root.join("Script Way").join("Snyk Report Compare");
+        let script_datadome = workspace_root.join("Script Way").join("DataDome Verified Bots Compare");
+
+        let mut working_dir = script_dir.clone();
+        let lower = fname.to_lowercase();
+        if lower.contains("snyk_compare.py") {
+            if has_xlsx(&snyk_portable) { working_dir = snyk_portable; }
+            else if has_xlsx(&app_snyk) { working_dir = app_snyk; }
+            else if has_xlsx(&script_snyk) { working_dir = script_snyk; }
+            else if snyk_portable.exists() { working_dir = snyk_portable; }
+            else if app_snyk.exists() { working_dir = app_snyk; }
+            else if script_snyk.exists() { working_dir = script_snyk; }
+        } else if lower.contains("datadome_compare.py") {
+            if has_xlsx(&datadome_portable) { working_dir = datadome_portable; }
+            else if has_xlsx(&app_datadome) { working_dir = app_datadome; }
+            else if has_xlsx(&script_datadome) { working_dir = script_datadome; }
+            else if datadome_portable.exists() { working_dir = datadome_portable; }
+            else if app_datadome.exists() { working_dir = app_datadome; }
+            else if script_datadome.exists() { working_dir = script_datadome; }
+        }
+
+        // Export as environment so Python can pick it up
+        cmd.env("WORKING_DIR", &working_dir);
+        let archive_dir = working_dir.join("_archive");
+        cmd.env("ARCHIVE_DIR", &archive_dir);
+    }
+
     // Spawn the process and stream output
     match cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn() {
         Ok(mut child) => {

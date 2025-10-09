@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 
 interface ScriptOutputViewerProps {
   output: string;
@@ -6,11 +6,26 @@ interface ScriptOutputViewerProps {
 }
 
 const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClearOutput }) => {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to bottom when new output arrives
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    // Scroll after layout updates to ensure scrollHeight is accurate
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      if (endRef.current) {
+        endRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+      }
+    });
+  }, [output]);
   // Replace textarea with styled line-by-line viewer to allow highlighting
   const renderOutput = () => {
     const lines = (output || '').split('\n');
     return (
-      <div className="w-full h-full p-4 bg-transparent text-app-text font-mono text-sm overflow-auto whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: '1.5'}}>
+      <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: '1.5'}}>
         {lines.map((line, idx) => {
           const isMissing = /(^|\b)missing(s)?\b/i.test(line) || /^Missing\s/i.test(line);
           const isStderr = line.startsWith('[stderr] ');
@@ -21,12 +36,13 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
             </div>
           );
         })}
+        <div ref={endRef} />
       </div>
     );
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6">
+    <div className="flex-1 min-h-0 flex flex-col p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
@@ -50,8 +66,10 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
       </div>
 
       {/* Output Area */}
-      <div className="flex-1 bg-app-panel border border-app-border rounded-lg overflow-hidden">
-        {renderOutput()}
+      <div className="flex-1 min-h-0 bg-app-panel border border-app-border rounded-lg">
+        <div ref={scrollerRef} className="h-full overflow-y-auto">
+          {renderOutput()}
+        </div>
       </div>
 
       {/* Status Bar */}
