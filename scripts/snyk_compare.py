@@ -52,6 +52,7 @@ def print_critical_line(text):
 # --- Configuration Constants ---
 REPO_SHEET_NAME = 'Snyk all repositories'
 WORKING_SHEET_NAME = 'Working sheet'
+WORKING_SHEET_MANUAL_NAME = 'Working sheet - Manual'
 TRACKER_SHEET_NAME = 'Vulnerability Tracker'
 TRACKER_DATA_SHEET_NAME = 'Tickets' # Preferred sheet to read from in the tracker file
 UNIQUE_ID_COLUMN = 'ISSUE_URL'
@@ -423,16 +424,24 @@ def process_reports(old_file, new_file, tracker_file):
                                      find_sheet_name(book_tracker, TRACKER_SHEET_NAME)
                 if tracker_sheet_name:
                     ws = book_tracker[tracker_sheet_name]
-                    headers = [cell.value for cell in ws[1]]
-                    if 'Issue URL' in headers and 'Ticket link' in headers:
-                        issue_url_col_idx = headers.index('Issue URL') + 1
-                        ticket_link_col_idx = headers.index('Ticket link') + 1
-                        # Build exact URL -> (display_text, hyperlink_url) map, case-insensitive on URL
+                    headers = [cell.value for cell in ws[1]] if ws.max_row >= 1 else []
+                    lowered = [str(h).strip().lower() if h is not None else '' for h in headers]
+                    # Case-insensitive header detection with fallback to 'Ticket' if 'Ticket link' absent
+                    iu_idx = lowered.index('issue url') + 1 if 'issue url' in lowered else None
+                    tl_idx = (
+                        lowered.index('ticket link') + 1 if 'ticket link' in lowered else (
+                            lowered.index('ticket') + 1 if 'ticket' in lowered else None
+                        )
+                    )
+                    if iu_idx and tl_idx:
+                        # Build full ISSUE_URL (lowercased) -> (display_text, hyperlink_url) map
                         ticket_map = {}
                         for row_cells in ws.iter_rows(min_row=2):
-                            issue_cell = row_cells[issue_url_col_idx - 1]
-                            ticket_cell = row_cells[ticket_link_col_idx - 1]
-                            issue_value = str(issue_cell.value).strip() if issue_cell.value else ''
+                            issue_cell = row_cells[iu_idx - 1]
+                            ticket_cell = row_cells[tl_idx - 1]
+                            raw_issue = issue_cell.value
+                            normalized_issue = extract_url_from_hyperlink(raw_issue)
+                            issue_value = str(normalized_issue).strip() if normalized_issue else ''
                             if not issue_value:
                                 continue
                             key = issue_value.lower()
@@ -440,12 +449,13 @@ def process_reports(old_file, new_file, tracker_file):
                             if display_text and (link_target or str(display_text).strip()):
                                 ticket_map[key] = (display_text, link_target)
 
-                        # Map by exact Issue URL (case-insensitive)
-                        issue_keys = new_items_df['ISSUE_URL'].astype(str).str.strip().str.lower()
+                        # Map strictly by full ISSUE_URL lowercase
+                        issue_keys_id = new_items_df['ISSUE_URL'].apply(extract_url_from_hyperlink).astype(str).str.strip()
+                        issue_keys = issue_keys_id.str.lower()
                         ticket_data = issue_keys.map(ticket_map)
                         print(f"  - Success: Found and mapped {ticket_data.notna().sum()} existing tickets from the tracker.")
                     else:
-                        print("\n[!] Tracker Warning: Tracker file is missing 'Issue URL' or 'Ticket link' columns.")
+                        print("\n[!] Tracker Warning: Tracker file is missing 'Issue URL' or 'Ticket link'/'Ticket' columns.")
                 else:
                     print(f"\n[!] Tracker Warning: Could not find '{TRACKER_DATA_SHEET_NAME}' or '{TRACKER_SHEET_NAME}' sheet in tracker file.")
                 book_tracker.close()
@@ -563,14 +573,18 @@ def process_reports(old_file, new_file, tracker_file):
             target_sheet.conditional_formatting.add(rule_range, critical_rule)
             print("  - Applied conditional formatting for 'Critical' severity.")
 
-        if 'PROJECT_NAME' in new_items_df.columns:
-            docker_mask = new_items_df['PROJECT_NAME'].astype(str).str.contains('docker', case=False, na=False)
-            hidden_count = int(docker_mask.sum())
-            row_base = 2
-            for offset, is_docker in enumerate(docker_mask.tolist()):
-                if is_docker:
-                    target_sheet.row_dimensions[row_base + offset].hidden = True
-            print(f"  - Hid {hidden_count} 'docker' related projects.")
+        # Use precise docker detection aligned with compare.py: prefer PROJECT_TARGET_REFERENCE, fallback to PROJECT_TARGET
+        docker_mask = pd.Series(False, index=new_items_df.index)
+        if 'PROJECT_TARGET_REFERENCE' in new_items_df.columns:
+            docker_mask = docker_mask | new_items_df['PROJECT_TARGET_REFERENCE'].astype(str).str.startswith('docker-image', na=False)
+        if 'PROJECT_TARGET' in new_items_df.columns:
+            docker_mask = docker_mask | new_items_df['PROJECT_TARGET'].astype(str).str.startswith('docker-image', na=False)
+        hidden_count = int(docker_mask.sum())
+        row_base = 2
+        for offset, is_docker in enumerate(docker_mask.tolist()):
+            if is_docker:
+                target_sheet.row_dimensions[row_base + offset].hidden = True
+        print(f"  - Hid {hidden_count} 'docker' related projects.")
 
         target_sheet.auto_filter.ref = target_sheet.dimensions
         
@@ -586,7 +600,7 @@ def process_reports(old_file, new_file, tracker_file):
             adjusted_width = max_length + 2
             target_sheet.column_dimensions[column_letter].width = adjusted_width
         
-        # Apply hyperlink formatting to Working sheet
+        # Apply hyperlink formatting to Working sheet using the original data (with tuples)
         apply_hyperlink_formatting(target_sheet, new_items_df)
         
         # Hide empty CVE_URL column if it exists and is empty, but ensure CVE column stays visible
@@ -608,13 +622,174 @@ def process_reports(old_file, new_file, tracker_file):
         
         print("  - Success: 'Working sheet' created and formatted.")
 
+        # Create a Manual Working sheet with the full dataset (no filtering or hiding)
+        print("\n--- Step 5b: Creating 'Working sheet - Manual' ---")
+        existing_manual_sheet_name = find_sheet_name(book, WORKING_SHEET_MANUAL_NAME)
+        if existing_manual_sheet_name:
+            book.remove(book[existing_manual_sheet_name])
+
+        manual_sheet = book.copy_worksheet(source_sheet)
+        manual_sheet.title = WORKING_SHEET_MANUAL_NAME
+        manual_sheet.sheet_properties.tabColor = "FFFF00"  # Yellow color
+        manual_sheet.delete_rows(2, manual_sheet.max_row + 1)
+        manual_sheet.insert_cols(ticket_col_pos + 1)
+        manual_sheet.cell(row=1, column=ticket_col_pos + 1).value = 'Ticket'
+
+        # Manual sheet uses df_new (full data), with Ticket set to status (new/old/ignore-docker-image)
+        # and overlaid with existing Ticket links if found in tracker
+        manual_df = df_new.copy()
+        # Ensure Ticket column exists without altering filters
+        if 'Ticket' not in manual_df.columns:
+            # Baseline status: new vs old using old_urls computed earlier
+            issue_series = manual_df[UNIQUE_ID_COLUMN].astype(str).str.strip()
+            # Define lowercase keys once for reuse across mappings
+            manual_issue_keys = issue_series.str.lower()
+            is_new_mask = ~issue_series.isin(old_urls)
+            # Default to 'old'; mark 'new' explicitly and keep docker marker
+            status_series = pd.Series('old', index=manual_df.index)
+            status_series[is_new_mask] = 'new'
+            # Mark docker-related rows only for items deemed 'new' using preferred reference, with fallbacks
+            docker_new_mask = pd.Series(False, index=manual_df.index)
+            if 'PROJECT_TARGET_REFERENCE' in manual_df.columns:
+                docker_new_mask = docker_new_mask | manual_df['PROJECT_TARGET_REFERENCE'].astype(str).str.startswith('docker-image', na=False)
+            if 'PROJECT_TARGET' in manual_df.columns:
+                docker_new_mask = docker_new_mask | manual_df['PROJECT_TARGET'].astype(str).str.startswith('docker-image', na=False)
+            docker_new_mask = is_new_mask & docker_new_mask
+            status_series[docker_new_mask] = 'ignore-docker-image'
+
+            # Recompute ticket_data for full set using tracker mapping
+            ticket_series_map = pd.Series([None] * len(manual_df), index=manual_df.index)
+            if tracker_file:
+                try:
+                    book_tracker = load_workbook(tracker_file, data_only=False)
+                    tracker_sheet_name = find_sheet_name(book_tracker, TRACKER_DATA_SHEET_NAME) or \
+                                         find_sheet_name(book_tracker, TRACKER_SHEET_NAME)
+                    if tracker_sheet_name:
+                        ws = book_tracker[tracker_sheet_name]
+                        headers = [cell.value for cell in ws[1]] if ws.max_row >= 1 else []
+                        lowered = [str(h).strip().lower() if h is not None else '' for h in headers]
+                        # Case-insensitive header detection with fallback to 'Ticket' if 'Ticket link' absent
+                        iu_idx = lowered.index('issue url') + 1 if 'issue url' in lowered else None
+                        tl_idx = (
+                            lowered.index('ticket link') + 1 if 'ticket link' in lowered else (
+                                lowered.index('ticket') + 1 if 'ticket' in lowered else None
+                            )
+                        )
+                        if iu_idx and tl_idx:
+                            ticket_map = {}
+                            for row_cells in ws.iter_rows(min_row=2):
+                                issue_cell = row_cells[iu_idx - 1]
+                                ticket_cell = row_cells[tl_idx - 1]
+                                raw_issue = issue_cell.value
+                                normalized_issue = extract_url_from_hyperlink(raw_issue)
+                                issue_value = str(normalized_issue).strip() if normalized_issue else ''
+                                if not issue_value:
+                                    continue
+                                key = issue_value.lower()
+                                display_text, link_target = _parse_ticket_cell_value(ticket_cell)
+                                if display_text and (link_target or str(display_text).strip()):
+                                    ticket_map[key] = (display_text, link_target)
+                            manual_issue_keys_id = manual_df[UNIQUE_ID_COLUMN].apply(extract_url_from_hyperlink).astype(str).str.strip()
+                            manual_issue_keys = manual_issue_keys_id.str.lower()
+                            ticket_series_map = manual_issue_keys.map(ticket_map)
+                    book_tracker.close()
+                except Exception:
+                    pass
+            # Fallback: map ticket numbers from old report's Working sheet (or available sheet)
+            old_ticket_series_map = pd.Series([None] * len(manual_df), index=manual_df.index)
+            try:
+                if old_file:
+                    book_old_local = load_workbook(old_file, data_only=False)
+                    # Prefer Working sheet in old report
+                    old_working_name = find_sheet_name(book_old_local, WORKING_SHEET_NAME)
+                    old_repo_name = find_sheet_name(book_old_local, REPO_SHEET_NAME)
+                    book_old_local.close()
+                    read_sheet_name = old_working_name or old_repo_name
+                    if read_sheet_name:
+                        try:
+                            df_old_ticket = pd.read_excel(
+                                old_file,
+                                sheet_name=read_sheet_name,
+                                engine='openpyxl',
+                                usecols=[UNIQUE_ID_COLUMN, 'Ticket']
+                            )
+                        except Exception:
+                            df_old_ticket = pd.read_excel(old_file, sheet_name=read_sheet_name, engine='openpyxl')
+                        if UNIQUE_ID_COLUMN in df_old_ticket.columns and 'Ticket' in df_old_ticket.columns:
+                            # Normalize and treat blanks as missing so they don't override status
+                            df_old_ticket = df_old_ticket.fillna('')
+                            df_old_ticket[UNIQUE_ID_COLUMN] = df_old_ticket[UNIQUE_ID_COLUMN].astype(str).str.strip().str.lower()
+                            df_old_ticket['Ticket'] = df_old_ticket['Ticket'].astype(str).str.strip()
+                            df_old_ticket['Ticket'] = df_old_ticket['Ticket'].replace('', pd.NA)
+                            old_map = dict(zip(df_old_ticket[UNIQUE_ID_COLUMN], df_old_ticket['Ticket']))
+                            # Map using full Issue URL lowercase keys to match old report
+                            manual_issue_keys_url = manual_df[UNIQUE_ID_COLUMN].apply(extract_url_from_hyperlink).astype(str).str.strip().str.lower()
+                            old_ticket_series_map = manual_issue_keys_url.map(old_map)
+            except Exception:
+                pass
+            # Combine: prefer tracker ticket links; then old report ticket; otherwise use status string
+            combined_ticket_series = ticket_series_map.combine_first(old_ticket_series_map).combine_first(status_series)
+            # Insert Ticket as hyperlinks/text
+            def _manual_hlink(data):
+                if isinstance(data, tuple) and len(data) == 2:
+                    text, link = data
+                    if link and str(link).strip().lower().startswith('http'):
+                        return (str(text) if text is not None else str(link), str(link).strip())
+                    if isinstance(text, str) and text.strip().lower().startswith('http'):
+                        s = text.strip()
+                        return (str(text), s)
+                    return str(text) if text is not None else ''
+                if isinstance(data, str):
+                    s = data.strip()
+                    if not s:
+                        return ''
+                    if s.lower().startswith('http'):
+                        return (s, s)
+                    return s
+                return ''
+            ticket_insert_pos = manual_df.columns.get_loc('ID') + 1 if 'ID' in manual_df.columns else 0
+            manual_df.insert(ticket_insert_pos, 'Ticket', combined_ticket_series.apply(_manual_hlink))
+
+        # Convert Issue URL column to hyperlinks for manual sheet
+        if 'ISSUE_URL' in manual_df.columns:
+            manual_df['ISSUE_URL'] = manual_df['ISSUE_URL'].apply(create_url_hyperlink)
+
+        # Create display version to write
+        manual_display_df = manual_df.copy()
+        for col in manual_display_df.columns:
+            manual_display_df[col] = manual_display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
+
+        for r in dataframe_to_rows(manual_display_df, index=False, header=False):
+            manual_sheet.append(r)
+        manual_sheet.auto_filter.ref = manual_sheet.dimensions
+
+        # Adjust widths similarly
+        for col_idx, column_header in enumerate(manual_display_df.columns, 1):
+            column_letter = get_column_letter(col_idx)
+            if column_header == 'GRACE PERIOD':
+                for cell in manual_sheet[column_letter][1:]:
+                    cell.number_format = 'MM/DD/YYYY'
+                    cell.alignment = Alignment(horizontal='center')
+            series = manual_display_df[column_header].astype(str)
+            max_length = max(len(str(column_header)), int(series.map(len).max() or 0))
+            adjusted_width = max_length + 2
+            manual_sheet.column_dimensions[column_letter].width = adjusted_width
+
+        # Apply hyperlink formatting to the manual sheet
+        apply_hyperlink_formatting(manual_sheet, manual_df)
+
+        print("  - Success: 'Working sheet - Manual' created and formatted.")
+
         print(f"\n--- Step 6: Creating '{TRACKER_SHEET_NAME}' sheet ---")
         
-        if 'PROJECT_NAME' in new_items_df.columns:
-            tracker_source_df = new_items_df[~new_items_df['PROJECT_NAME'].str.contains('docker', case=False, na=False)].copy()
-            print(f"  - Filtered out docker items. {len(tracker_source_df)} items will be added to the tracker.")
-        else:
-            tracker_source_df = new_items_df.copy()
+        # Filter out docker items using preferred reference with fallbacks for the tracker sheet
+        docker_filter_mask = pd.Series(False, index=new_items_df.index)
+        if 'PROJECT_TARGET_REFERENCE' in new_items_df.columns:
+            docker_filter_mask = docker_filter_mask | new_items_df['PROJECT_TARGET_REFERENCE'].astype(str).str.startswith('docker-image', na=False)
+        if 'PROJECT_TARGET' in new_items_df.columns:
+            docker_filter_mask = docker_filter_mask | new_items_df['PROJECT_TARGET'].astype(str).str.startswith('docker-image', na=False)
+        tracker_source_df = new_items_df[~docker_filter_mask].copy()
+        print(f"  - Filtered out docker items. {len(tracker_source_df)} items will be added to the tracker.")
 
         def format_cve_cwe(row):
             cve = str(row.get('CVE', ''))
