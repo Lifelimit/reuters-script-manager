@@ -289,6 +289,11 @@ function App() {
     } else {
       didInitialSelect.current = true;
     }
+    // Reset run state and completion when switching scripts
+    setIsRunning(false);
+    setLastExitCode(null);
+    setRunProgress(0);
+    setRunProgressLabel(null);
     setSelectedLabel(label);
     const path = resolveScriptPath(label);
     setSelectedScript(path);
@@ -757,6 +762,18 @@ function App() {
           <ScriptControlPanel
             selectedScript={selectedScript}
             onScriptSelect={handleScriptSelect}
+            onResetPanel={() => {
+              // Reset to initial UI state for current script
+              setOutput('');
+              setIsRunning(false);
+              setLastExitCode(null);
+              setRunProgress(0);
+              setRunProgressLabel(null);
+              setManualMode(false);
+              setManualFiles({});
+              setRequiredFilesStatus(null);
+              setDocModal(null);
+            }}
             onRunScript={handleRunScript}
             onBrowseFile={handleBrowseFile}
             onRepair={handleRepair}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 interface RequiredFileStatus {
   name: string;
@@ -13,6 +13,7 @@ interface Dependency {
 interface ScriptControlPanelProps {
   selectedScript: string;
   onScriptSelect: (script: string) => void;
+  onResetPanel?: () => void;
   onRunScript: () => void;
   onBrowseFile: () => void;
   onRepair?: () => void; // new optional repair action
@@ -37,6 +38,7 @@ interface ScriptControlPanelProps {
 const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   selectedScript,
   onScriptSelect,
+  onResetPanel,
   onRunScript,
   onBrowseFile,
   onRepair,
@@ -57,6 +59,17 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   onSelectInputFile
 }) => {
   const [dropdownValue, setDropdownValue] = useState('Snyk Report Compare');
+
+  // Keep dropdown label in sync with selectedScript path
+  useEffect(() => {
+    if (!selectedScript) return;
+    const lower = selectedScript.toLowerCase();
+    if (lower.includes('snyk')) {
+      setDropdownValue('Snyk Report Compare');
+    } else if (lower.includes('datadome')) {
+      setDropdownValue('DataDome Compare');
+    }
+  }, [selectedScript]);
 
   // Check if all requirements are met
   const allRequirementsMet = () => {
@@ -86,9 +99,10 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
     onScriptSelect(value);
   };
 
-  const handleRefresh = () => {
-    // Placeholder for refresh functionality
-    console.log('Refresh clicked');
+  const handleReset = () => {
+    // Ask parent to reset UI state
+    if (onResetPanel) onResetPanel();
+    // Preserve current selection; dropdown stays synced via selectedScript
   };
 
   // Deduplicate required file names to avoid duplicate React keys
@@ -127,11 +141,11 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
               📁 Browse
             </button>
             <button
-              onClick={handleRefresh}
+              onClick={handleReset}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
-              title="Reload the selection and refresh panel data"
+              title="Reset panel to initial state"
             >
-              🔄 Refresh
+              ♻️ Reset
             </button>
             {onRepair && (
               <button
