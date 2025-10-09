@@ -1,58 +1,84 @@
-# 📘 Reuters Script Manager — Main Documentation
+# 📘 Reuters Script Manager — User Guide
 
-Clear, modern documentation for the Reuters Script Manager desktop app and its Python scripts, styled for readability and quick navigation.
-
----
-
-## 🎯 Overview
-
-This documentation provides:
-- ✅ High-level application guidance
-- 📚 Script-specific technical details and user guides
-- 🛠️ Development and build information
-- 🧩 Troubleshooting and best practices
+Simple, practical guidance for using the Reuters Script Manager desktop app. This guide focuses on what you need to run scripts successfully — no developer setup required.
 
 ---
 
-## 📚 Documentation Structure
+## 🎯 What You Can Do
 
-### 🧭 Main Application Docs
-- `README.md` — Overview, features, usage
-- `VS_CODE_GUIDE.md` — Development setup and VS Code configuration
-- `BUILD_STATUS.md` — Build configuration and deployment
-
-### 🧪 Script-Specific Docs
-
-#### 🔐 Snyk Report Compare
-- **Location**: `Documents/Snyk Report Compare/`
-- `README.md` — Technical overview and behavior
-- `Snyk_Compare_Script_User_Guide.md` — Step-by-step user guide
-- **Purpose**: Vulnerability analysis and tracking
-
-#### 🤖 DataDome Compare
-- **Location**: `Documents/DataDome Verified Bots Compare/`
-- `README.md` — Technical overview and behavior
-- `DataDome_Compare_Script_User_Guide.md` — Step-by-step user guide
-- **Purpose**: Verified bots and AI agents analysis
+- 🔐 Compare Snyk vulnerability reports over time
+- 🤖 Review DataDome verified bots and AI agents
+- 📚 Open step-by-step user guides directly in the app
 
 ---
 
-## 📁 Documentation Locations
+## 🚀 Quick Start
 
-```
-App Way/
-├── README.md                           # Main application documentation
-├── VS_CODE_GUIDE.md                    # Development setup guide
-├── BUILD_STATUS.md                     # Build and deployment info
-└── Documents/
-    ├── Snyk Report Compare/
-    │   ├── README.md                   # Snyk script technical overview
-    │   └── Snyk_Compare_Script_User_Guide.md   # Snyk user instructions
-    └── DataDome Verified Bots Compare/
-        ├── README.md                   # DataDome script technical overview
-        └── DataDome_Compare_Script_User_Guide.md # DataDome user instructions
-```
+1. Launch the app
+2. Choose a script from the dropdown (Snyk or DataDome)
+3. Ensure required files are present (status indicators will confirm)
+4. Open the User Guide from the top bar for exact steps
+5. Click Run once requirements are met
 
 ---
 
-This documentation system keeps both users and developers fully informed about the Reuters Script Manager and its associated Python scripts.
+## 📁 Required Files
+
+The app automatically checks for required files. Place them in the same directory as the script or in the working folder shown in the details panel.
+
+### Snyk Report Compare
+- `Snyk Report CAT YYYY-MM-DD.xlsx` (latest report)
+- `Snyk Vulnerability tracker.xlsx` (tracking file)
+
+### DataDome Compare
+- `DataDome_Export_AI_agents_YYYY-MM-DD.xlsx`
+- `DataDome_Export_verified_bots_YYYY-MM-DD.xlsx`
+- `DataDome Bots - Block or Whitelist.xlsx`
+
+---
+
+## 🧭 Using the App
+
+- Top bar: Open README and the script’s User Guide
+- Left panel: Script details, working directory, dependencies, and required files
+- Right panel: Controls for selecting, repairing, and running scripts
+- Bottom panel: Real-time output and status
+
+---
+
+## 🛠️ Common Actions
+
+- Browse: Select a script file to run
+- Repair: Automatically set up the Python environment if needed
+- Check Requirements: Re-validate files if you’ve added/changed them
+- Reveal: Open the working folder in your file explorer
+
+---
+
+## ✅ Tips for Success
+
+- Keep the latest files in the working directory
+- Follow the User Guide steps carefully
+- Don’t interrupt the script while it’s running
+- Use consistent file naming and archive old files regularly
+
+---
+
+## ❓ Troubleshooting
+
+- Missing files: Status indicators will show what’s missing
+- Environment issues: Click Repair to recreate the Python environment
+- Permission errors: Ensure files aren’t locked or restricted
+- Unexpected messages: Review the output panel for details
+
+---
+
+## 📚 Guides
+
+Open these directly in the app:
+- Snyk: `Snyk_Compare_Script_User_Guide.md`
+- DataDome: `DataDome_Compare_Script_User_Guide.md`
+
+---
+
+Private — Internal Use Only
