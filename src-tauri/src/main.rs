@@ -25,8 +25,66 @@ struct FileWatchState {
 /// the .app bundle; on other platforms, it resolves to the executable's
 /// directory. Falls back to current_dir if resolution fails.
 fn launcher_visible_base_dir() -> PathBuf {
+    // Helper: find a folder named "reuters-script-manager" in likely locations
+    fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+        const WS_NAME: &str = "reuters-script-manager";
+
+        // 1) Walk up ancestors to see if any parent is the workspace root
+        let mut cur = Some(start);
+        while let Some(p) = cur {
+            if p.file_name().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case(WS_NAME)).unwrap_or(false) {
+                return Some(p.to_path_buf());
+            }
+            cur = p.parent();
+        }
+
+        // 2) Check siblings of start and its immediate parents (limited depth)
+        for anchor in [start.to_path_buf(), start.parent().unwrap_or(Path::new("/")).to_path_buf(), start.parent().and_then(|p| p.parent()).unwrap_or(Path::new("/")).to_path_buf()] {
+            if let Ok(rd) = std::fs::read_dir(&anchor) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        if p.file_name().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case(WS_NAME)).unwrap_or(false) {
+                            return Some(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3) Probe common home subfolders for immediate or one-level-deep workspace
+        if let Some(home) = dirs_next::home_dir() {
+            let common = [
+                home.clone(),
+                home.join("Desktop"),
+                home.join("Documents"),
+                home.join("Downloads"),
+                home.join("Projects"),
+                home.join("Personal Projects"),
+                home.join("Development"),
+            ];
+            for base in common.iter() {
+                let direct = base.join(WS_NAME);
+                if direct.is_dir() { return Some(direct); }
+                if let Ok(rd) = std::fs::read_dir(base) {
+                    for e in rd.flatten() {
+                        let p = e.path();
+                        if p.is_dir() {
+                            let candidate = p.join(WS_NAME);
+                            if candidate.is_dir() { return Some(candidate); }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    // Derive base from current executable
     let exe = std::env::current_exe().unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let mut base = exe.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+
     // Detect macOS app bundle structure: <App>.app/Contents/MacOS/<bin>
     // If so, move up to the directory that contains the .app bundle
     if base.ends_with("MacOS") {
@@ -37,25 +95,27 @@ fn launcher_visible_base_dir() -> PathBuf {
                 }
             }
         }
-        return base;
     }
 
     // Development executable lives under: <workspace>/src-tauri/target/{debug|release}
-    // For a better user experience, place visible data folders at the workspace root
-    // rather than inside the target directory.
-    // If the path matches that layout, step up to the workspace root.
+    // If matched, step up to the workspace root.
     let is_cargo_target = base.ends_with("debug") || base.ends_with("release");
     if is_cargo_target {
         if let Some(target_dir) = base.parent() { // .../src-tauri/target
             if let Some(src_tauri_dir) = target_dir.parent() { // .../src-tauri
                 if let Some(workspace_root) = src_tauri_dir.parent() { // .../<workspace>
-                    return workspace_root.to_path_buf();
+                    base = workspace_root.to_path_buf();
                 }
             }
         }
     }
 
-    // Fallback: use the executable directory
+    // Prefer a workspace folder explicitly named "reuters-script-manager" if present
+    if let Some(ws) = find_workspace_root(&base) {
+        return ws;
+    }
+
+    // Fallback: use the computed base directory
     base
 }
 
@@ -271,9 +331,23 @@ fn read_requirements(app_handle: &AppHandle) -> Option<Vec<String>> {
                 if !pkgs.is_empty() { return Some(pkgs); }
             }
         }
+        // Bundled resources may be under Resources/_up_
+        let res_up_path = res_dir.join("_up_").join("Documents").join("Main").join("requirements.txt");
+        if res_up_path.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&res_up_path) {
+                let pkgs = parse_requirements(&contents);
+                if !pkgs.is_empty() { return Some(pkgs); }
+            }
+        }
     }
     // Try logical resource resolution
     if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/Main/requirements.txt") {
+        if let Ok(contents) = std::fs::read_to_string(&resolved) {
+            let pkgs = parse_requirements(&contents);
+            if !pkgs.is_empty() { return Some(pkgs); }
+        }
+    }
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("_up_/Documents/Main/requirements.txt") {
         if let Ok(contents) = std::fs::read_to_string(&resolved) {
             let pkgs = parse_requirements(&contents);
             if !pkgs.is_empty() { return Some(pkgs); }
@@ -709,8 +783,14 @@ fn resolve_script_absolute_path(app_handle: &AppHandle, script_path: &str) -> (P
             // On macOS packaged apps, resources live in ../Resources
             if cfg!(target_os = "macos") {
                 if let Some(app_contents) = exe_dir.parent() {
-                    let resources = app_contents.join("Resources").join(script_path);
-                    candidates.push(resources);
+                    let resources = app_contents.join("Resources");
+                    candidates.push(resources.join(script_path));
+                    // Also try normalized _up_ layout used in bundling
+                    candidates.push(resources.join("_up_").join(script_path));
+                    if let Some(fname) = Path::new(script_path).file_name() {
+                        candidates.push(resources.join(fname));
+                        candidates.push(resources.join("_up_").join(fname));
+                    }
                 }
             }
         }
@@ -720,8 +800,10 @@ fn resolve_script_absolute_path(app_handle: &AppHandle, script_path: &str) -> (P
     // 3) Tauri resource directory (bundled files) via PathResolver
     if let Some(res_dir) = app_handle.path_resolver().resource_dir() {
         candidates.push(res_dir.join(script_path));
+        candidates.push(res_dir.join("_up_").join(script_path));
         if let Some(fname) = Path::new(script_path).file_name() {
             candidates.push(res_dir.join(fname));
+            candidates.push(res_dir.join("_up_").join(fname));
         }
     }
     // Also try resolve_resource which maps logical resource paths

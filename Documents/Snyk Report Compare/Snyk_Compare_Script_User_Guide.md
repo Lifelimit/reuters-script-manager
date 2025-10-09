@@ -207,6 +207,5 @@ For additional support:
 - 📖 Check the README file for general information
 - 📄 Review output messages for specific error details
 - ✅ Ensure all system requirements are met
-- 🛠️ Contact system administrator for environment issues
 
 > 🎯 **Pro Tip**: The launcher makes running this script much easier and safer by automatically validating all requirements before execution!

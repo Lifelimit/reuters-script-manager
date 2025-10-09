@@ -277,6 +277,5 @@ For additional support:
 - 📖 Check the README file for general information
 - 📄 Review output messages for specific error details
 - ✅ Ensure all system requirements are met
-- 🛠️ Contact system administrator for environment issues
 
 > 🎯 **Pro Tip**: The launcher makes bot analysis much more reliable by automatically validating all file requirements and providing real-time status feedback!

@@ -37,6 +37,10 @@ pub async fn read_documentation_file(
         bases.push(res_dir.join("Documents").join("Main"));
         bases.push(res_dir.join("Documents").join("Snyk Report Compare"));
         bases.push(res_dir.join("Documents").join("DataDome Verified Bots Compare"));
+        // Bundled resources are placed under Resources/_up_/...
+        bases.push(res_dir.join("_up_").join("Documents").join("Main"));
+        bases.push(res_dir.join("_up_").join("Documents").join("Snyk Report Compare"));
+        bases.push(res_dir.join("_up_").join("Documents").join("DataDome Verified Bots Compare"));
     }
     // Logical resource mapping
     if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/Main") {
@@ -46,6 +50,16 @@ pub async fn read_documentation_file(
         bases.push(resolved);
     }
     if let Some(resolved) = app_handle.path_resolver().resolve_resource("Documents/DataDome Verified Bots Compare") {
+        bases.push(resolved);
+    }
+    // Attempt logical mapping for _up_ layout as a fallback
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("_up_/Documents/Main") {
+        bases.push(resolved);
+    }
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("_up_/Documents/Snyk Report Compare") {
+        bases.push(resolved);
+    }
+    if let Some(resolved) = app_handle.path_resolver().resolve_resource("_up_/Documents/DataDome Verified Bots Compare") {
         bases.push(resolved);
     }
 
