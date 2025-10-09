@@ -119,10 +119,6 @@ The application automatically configures:
 
 Private — Internal Use Only
 
-## 🤝 Contributing
-
-This is a private repository. For questions or contributions, contact the development team.
-
 ---
 
 Reuters Script Manager — Professional desktop automation for script management and execution.

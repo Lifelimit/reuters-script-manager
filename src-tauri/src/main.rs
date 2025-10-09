@@ -939,7 +939,12 @@ async fn read_script_metadata(
     );
 
     // Build documentation list based on script type using Markdown files
-    let docs = if fname.to_lowercase().contains("datadome_compare.py") {
+    let is_datadome = abs_script_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_lowercase().contains("datadome_compare.py"))
+        .unwrap_or(false);
+    let docs = if is_datadome {
         vec!["README.md", "DataDome_Compare_Script_User_Guide.md"]
     } else {
         vec!["README.md", "Snyk_Compare_Script_User_Guide.md"]
