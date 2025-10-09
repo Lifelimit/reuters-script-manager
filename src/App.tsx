@@ -65,6 +65,8 @@ function App() {
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
   const [manualMode, setManualMode] = useState<boolean>(false);
   const [manualFiles, setManualFiles] = useState<Record<string, string>>({});
+  const [runProgress, setRunProgress] = useState<number>(0);
+  const [runProgressLabel, setRunProgressLabel] = useState<string | null>(null);
   // Handler to open documentation modal
   const handleOpenDoc = async (doc: 'readme' | 'guide') => {
     let file = '';
@@ -320,21 +322,34 @@ function App() {
     try {
       setIsRunning(true);
       setLastExitCode(null);
+      setRunProgress(0);
+      setRunProgressLabel('Starting...');
       if (isBrowserPreview) {
         // Simulate a short run with output lines and success
         setOutput((p) => p + `Launching script: ${selectedLabel}\n`);
-        const lines = [
-          'Initializing...',
-          'Reading input files...',
-          'Analyzing data...',
-          'Writing results...',
-          'Done.'
+        const simPhases = [
+          'Pre-flight Validation',
+          'Step 1',
+          'Step 2',
+          'Step 3',
+          'Step 4',
+          'Step 5',
+          'Step 6',
+          'Step 7',
+          'Step 8',
+          'Complete'
         ];
-        for (const ln of lines) {
-          setOutput((p) => p + ln + '\n');
+        for (let i = 0; i < simPhases.length; i++) {
+          const phase = simPhases[i];
+          const pct = i / (simPhases.length - 1);
+          setRunProgress(pct);
+          setRunProgressLabel(phase);
+          setOutput((p) => p + `${phase}...` + '\n');
         }
         setOutput((p) => p + 'Process exited with code 0\n');
         setLastExitCode(0);
+        setRunProgress(1);
+        setRunProgressLabel('Complete');
         setIsRunning(false);
       } else {
         const manualList = manualMode
@@ -573,6 +588,30 @@ function App() {
                   setOutput((p) => p + `[stderr] ${line}\n`);
                 } else {
                   setOutput((p) => p + line + '\n');
+                  // Progress parsing tied to Snyk script output step markers
+                  try {
+                    if (selectedLabel === 'Snyk Report Compare') {
+                      const patterns: { label: string; re: RegExp }[] = [
+                        { label: 'Pre-flight Validation', re: /Pre[-\s]?flight\s+Validation/i },
+                        { label: 'Step 1', re: /-+\s*Step\s*1\s*:/i },
+                        { label: 'Step 2', re: /-+\s*Step\s*2\s*:/i },
+                        { label: 'Step 3', re: /-+\s*Step\s*3\s*:/i },
+                        { label: 'Step 4', re: /-+\s*Step\s*4\s*:/i },
+                        { label: 'Step 5', re: /-+\s*Step\s*5\s*:/i },
+                        { label: 'Step 6', re: /-+\s*Step\s*6\s*:/i },
+                        { label: 'Step 7', re: /-+\s*Step\s*7\s*:/i },
+                        { label: 'Step 7b', re: /-+\s*Step\s*7\s*b\s*:/i },
+                        { label: 'Step 8', re: /-+\s*Step\s*8\s*:/i },
+                        { label: 'Complete', re: /PROCESS\s+COMPLETE/i },
+                      ];
+                      const idx = patterns.findIndex(p => p.re.test(line));
+                      if (idx >= 0) {
+                        const pct = idx / (patterns.length - 1);
+                        setRunProgress((prev) => pct > prev ? pct : prev);
+                        setRunProgressLabel(patterns[idx].label);
+                      }
+                    }
+                  } catch { /* ignore progress parse errors */ }
                 }
               }
             } catch { /* ignore */ }
@@ -587,6 +626,10 @@ function App() {
               setOutput((p) => p + `Process exited with code ${codeText}\n`);
               const codeNum = payload && typeof payload.code === 'number' ? payload.code : null;
               setLastExitCode(codeNum);
+              if (codeNum === 0) {
+                setRunProgress(1);
+                setRunProgressLabel('Complete');
+              }
               setIsRunning(false);
             } catch {
               setOutput((p) => p + 'Process exited\n');
@@ -706,7 +749,7 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel - Script Details */}
         <div className="w-80 panel panel-border border-r">
-          <ScriptDetailsPanel metadata={scriptMetadata} deps={deps || undefined} requiredFilesStatus={requiredFilesStatus || undefined} />
+          <ScriptDetailsPanel metadata={scriptMetadata} deps={deps || undefined} requiredFilesStatus={requiredFilesStatus || undefined} manualMode={manualMode} />
         </div>
         
         {/* Right Panel - Main Content */}
@@ -725,6 +768,8 @@ function App() {
             requiredFilesStatus={requiredFilesStatus}
             isRunning={isRunning}
             lastExitCode={lastExitCode ?? undefined}
+            runProgress={runProgress}
+            runProgressLabel={runProgressLabel}
             manualMode={manualMode}
             requiredFileNames={scriptMetadata?.required_files}
             manualFiles={manualFiles}

@@ -25,11 +25,20 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
   const renderOutput = () => {
     const lines = (output || '').split('\n');
     return (
-      <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: '1.5'}}>
+      <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, \"Courier New\", monospace', lineHeight: '1.5'}}>
         {lines.map((line, idx) => {
-          const isMissing = /(^|\b)missing(s)?\b/i.test(line) || /^Missing\s/i.test(line);
-          const isStderr = line.startsWith('[stderr] ');
-          const className = isStderr ? 'text-red-400' : isMissing ? 'text-red-400' : '';
+          const trimmed = line.trim();
+          const isStderr = trimmed.startsWith('[stderr] ');
+          const isStep = /^->\s/.test(trimmed);
+          const isSuccess = /(^|\b)(✓|success|completed|done)\b/i.test(trimmed);
+          const isWarning = /(^|\b)(warning|warn|caution)\b/i.test(trimmed);
+          const isError = /(^|\b)(error|failed|\u2717)\b/i.test(trimmed);
+          const isMissing = /(^|\b)missing(s)?\b/i.test(trimmed) || /^Missing\s/i.test(trimmed);
+          let className = '';
+          if (isStderr || isError || isMissing) className = 'text-red-400';
+          else if (isWarning) className = 'text-yellow-300';
+          else if (isSuccess) className = 'text-green-400';
+          else if (isStep) className = 'text-cyan-300';
           return (
             <div key={idx} className={className}>
               {line.length > 0 ? line : '\u00A0'}

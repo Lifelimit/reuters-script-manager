@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 interface RequiredFileStatus {
   name: string;
@@ -25,6 +25,8 @@ interface ScriptControlPanelProps {
   // New props for banners and manual mode
   isRunning?: boolean;
   lastExitCode?: number;
+  runProgress?: number;
+  runProgressLabel?: string | null;
   manualMode?: boolean;
   requiredFileNames?: string[] | undefined;
   manualFiles?: Record<string, string>;
@@ -46,6 +48,8 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   requiredFilesStatus,
   isRunning = false,
   lastExitCode,
+  runProgress = 0,
+  runProgressLabel = null,
   manualMode = false,
   requiredFileNames,
   manualFiles = {},
@@ -87,23 +91,15 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
     console.log('Refresh clicked');
   };
 
+  // Deduplicate required file names to avoid duplicate React keys
+  const uniqueRequiredFileNames = useMemo(() => {
+    const names = requiredFileNames || [];
+    return Array.from(new Set(names));
+  }, [requiredFileNames]);
+
   return (
     <div className="topbar">
-      {/* Status Banners */}
-      {isRunning && (
-        <div className="mb-4 p-3 rounded-md border border-blue-600 bg-blue-900 text-blue-100 flex items-center space-x-2">
-          <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-          </svg>
-          <span className="font-medium">Running...</span>
-        </div>
-      )}
-      {!isRunning && typeof lastExitCode !== 'undefined' && lastExitCode === 0 && (
-        <div className="mb-4 p-3 rounded-md border border-green-600 bg-green-900 text-green-100 flex items-center space-x-2">
-          <span>✅ Completed successfully</span>
-        </div>
-      )}
+      {/* Status Banners (running banner removed; success banner replaced with compact indicator) */}
       {!isRunning && typeof lastExitCode !== 'undefined' && lastExitCode !== null && lastExitCode !== 0 && (
         <div className="mb-4 p-3 rounded-md border border-red-600 bg-red-900 text-red-100 flex items-center space-x-2">
           <span>❌ Exited with code {lastExitCode}</span>
@@ -157,6 +153,9 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
             <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
           </svg>
           <span className="text-sm font-medium text-app-text">Actions</span>
+          {!isRunning && typeof lastExitCode !== 'undefined' && lastExitCode === 0 && (
+            <span className="ml-2 text-xs px-2 py-1 rounded bg-green-800 text-green-100">✅ Completed</span>
+          )}
         </div>
         <div className="space-y-3">
           <button
@@ -180,13 +179,21 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
             }
           >
             {isRunning ? (
-              <>
-                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                </svg>
-                <span>Running...</span>
-              </>
+              <div className="flex flex-col items-center w-full">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                  <span>{runProgressLabel ? runProgressLabel : 'Running...'}</span>
+                </div>
+                <div className="mt-2 w-full h-1 bg-blue-800 rounded overflow-hidden">
+                  <div
+                    className={`h-full bg-blue-400 ${runProgress > 0 ? '' : 'animate-pulse'}`}
+                    style={{ width: `${Math.max(5, Math.min(100, Math.round((runProgress || 0) * 100)))}%` }}
+                  ></div>
+                </div>
+              </div>
             ) : (!requirementsMet && !manualMode) ? (
               <>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -239,12 +246,12 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
             <span className="ml-2 text-xs text-app-muted">Select required input files manually before running</span>
           </label>
         </div>
-        {manualMode && requiredFileNames && requiredFileNames.length > 0 && (
+        {manualMode && uniqueRequiredFileNames && uniqueRequiredFileNames.length > 0 && (
           <div className="space-y-2">
-            {requiredFileNames.map((name) => {
+            {uniqueRequiredFileNames.map((name, idx) => {
               const selected = manualFiles && manualFiles[name];
               return (
-                <div key={name} className="flex items-center justify-between bg-app-darker p-2 rounded-md border border-app-border">
+                <div key={`${name}-${idx}`} className="flex items-center justify-between bg-app-darker p-2 rounded-md border border-app-border">
                   <div className="flex-1">
                     <div className="text-xs text-app-muted">Required:</div>
                     <div className="text-sm text-app-text truncate" title={name}>{name}</div>

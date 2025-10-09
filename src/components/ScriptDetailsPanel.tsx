@@ -31,9 +31,11 @@ interface ScriptDetailsPanelProps {
   metadata: ScriptMetadata | null;
   deps?: DepStatus[]; // optional dependency status to render
   requiredFilesStatus?: { name: string; exists: boolean }[];
+  // Whether manual mode is enabled (used to adjust required files UI)
+  manualMode?: boolean;
 }
 
-const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps, requiredFilesStatus }) => {
+const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps, requiredFilesStatus, manualMode = false }) => {
   // Render helpers
   const shortenPath = (input?: string): string => {
     if (!input) return '';
@@ -259,23 +261,36 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
         {/* Required Files Section */}
         <div className="mt-4">
           <div className="text-sm font-medium text-app-text mb-2">Required Files:</div>
-          <div className="space-y-1">
-            {(metadata?.required_files && metadata.required_files.length > 0) ? (
-              metadata.required_files.map((file, index) => {
-                const missing = missingFilesSet.has(file);
-                return (
-                  <div key={index} className={`flex items-center px-3 py-1 ${missing ? 'text-red-400' : ''}`} title={missing ? 'File not found' : undefined}>
-                    {missing ? <CrossIcon /> : <CheckIcon />}
-                    <span className={`text-xs ml-2 ${missing ? 'text-red-400' : 'text-app-text-secondary'}`}>{file}</span>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex items-center px-3 py-1">
-                <span className="text-xs text-app-text-secondary">Analyzing required files…</span>
+          {/* If manual mode is enabled and some files are missing, disable automatic file checker display */}
+          {(manualMode && missingFilesSet.size > 0) ? (
+            <div className="px-3 py-2 rounded bg-app-darker border border-app-border text-xs text-app-text-secondary" title="Manual Mode enabled">
+              <div className="flex items-center">
+                <svg className="w-4 h-4 text-app-muted mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM9 7h2v6H9V7zm1 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+                <span>Manual Mode enabled — automatic file check disabled.</span>
               </div>
-            )}
-          </div>
+              <div className="mt-1 text-[11px] text-app-muted">Select required inputs in the right panel before running.</div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {(metadata?.required_files && metadata.required_files.length > 0) ? (
+                metadata.required_files.map((file, index) => {
+                  const missing = missingFilesSet.has(file);
+                  return (
+                    <div key={index} className={`flex items-center px-3 py-1 ${missing ? 'text-red-400' : ''}`} title={missing ? 'File not found' : undefined}>
+                      {missing ? <CrossIcon /> : <CheckIcon />}
+                      <span className={`text-xs ml-2 ${missing ? 'text-red-400' : 'text-app-text-secondary'}`}>{file}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex items-center px-3 py-1">
+                  <span className="text-xs text-app-text-secondary">Analyzing required files…</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
