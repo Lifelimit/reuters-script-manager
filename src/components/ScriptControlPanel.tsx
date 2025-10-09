@@ -66,7 +66,7 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   };
 
   return (
-    <div className="p-6 bg-app-darker border-b border-app-border">
+    <div className="topbar">
       {/* Script Selector Section */}
       <div className="mb-6">
         <div className="flex items-center space-x-4">

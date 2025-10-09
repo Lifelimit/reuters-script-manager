@@ -58,6 +58,19 @@
   .panel-border {
     @apply border border-app-border;
   }
+  /* Shared panel and layout helpers */
+  .panel {
+    @apply bg-app-panel border border-app-border;
+  }
+  .panel-rounded {
+    @apply rounded-lg;
+  }
+  .panel-header {
+    @apply flex items-center justify-between mb-4;
+  }
+  .topbar {
+    @apply p-6 bg-app-darker border-b border-app-border;
+  }
   
   .button-primary {
     @apply bg-app-blue hover:bg-app-blue-hover text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
