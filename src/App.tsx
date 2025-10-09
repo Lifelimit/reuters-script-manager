@@ -351,7 +351,6 @@ function App() {
           setRunProgressLabel(phase);
           setOutput((p) => p + `${phase}...` + '\n');
         }
-        setOutput((p) => p + 'Process exited with code 0\n');
         setLastExitCode(0);
         setRunProgress(1);
         setRunProgressLabel('Complete');
@@ -627,9 +626,12 @@ function App() {
             if (!isMounted) return;
             try {
               const payload = evt.payload as { code?: number | null };
-              const codeText = (payload && 'code' in payload) ? String(payload.code) : 'unknown';
-              setOutput((p) => p + `Process exited with code ${codeText}\n`);
               const codeNum = payload && typeof payload.code === 'number' ? payload.code : null;
+              const codeText = (payload && 'code' in payload) ? String(payload.code) : 'unknown';
+              // Only log exit code when non-zero or unknown; suppress noisy success line
+              if (codeNum !== 0) {
+                setOutput((p) => p + `Process exited with code ${codeText}\n`);
+              }
               setLastExitCode(codeNum);
               if (codeNum === 0) {
                 setRunProgress(1);

@@ -237,11 +237,11 @@ def validate_required_sheets(old_file, new_file, tracker_file):
     try:
         book_new = load_workbook(new_file, read_only=True, data_only=True)
         new_sheet_name = find_sheet_name(book_new, REPO_SHEET_NAME)
+        available_sheets_new = book_new.sheetnames
         book_new.close()
-        
         if not new_sheet_name:
             colored_print(f"\n[-] Validation Failed: Required sheet '{REPO_SHEET_NAME}' not found in new report '{os.path.basename(new_file)}'.", Fore.RED)
-            colored_print(f"    Available sheets: {', '.join([name for name in load_workbook(new_file, read_only=True, data_only=True).sheetnames])}", Fore.YELLOW)
+            colored_print(f"    Available sheets: {', '.join(available_sheets_new)}", Fore.YELLOW)
             return False
         else:
             safe_print(f"  ✓ New report sheet '{REPO_SHEET_NAME}' found")
@@ -254,11 +254,11 @@ def validate_required_sheets(old_file, new_file, tracker_file):
         try:
             book_old = load_workbook(old_file, read_only=True, data_only=True)
             old_sheet_name = find_sheet_name(book_old, REPO_SHEET_NAME)
+            available_sheets_old = book_old.sheetnames
             book_old.close()
-            
             if not old_sheet_name:
                 colored_print(f"\n[-] Validation Failed: Required sheet '{REPO_SHEET_NAME}' not found in old report '{os.path.basename(old_file)}'.", Fore.RED)
-                colored_print(f"    Available sheets: {', '.join([name for name in load_workbook(old_file, read_only=True, data_only=True).sheetnames])}", Fore.YELLOW)
+                colored_print(f"    Available sheets: {', '.join(available_sheets_old)}", Fore.YELLOW)
                 return False
             else:
                 safe_print(f"  ✓ Old report sheet '{REPO_SHEET_NAME}' found")
@@ -321,7 +321,15 @@ def process_reports(old_file, new_file, tracker_file):
             book_old.close()
             print(f"  - Reading old report: '{old_file}'")
             if old_sheet_name:
-                df_old = pd.read_excel(old_file, sheet_name=old_sheet_name, engine='openpyxl')
+                try:
+                    df_old = pd.read_excel(
+                        old_file,
+                        sheet_name=old_sheet_name,
+                        engine='openpyxl',
+                        usecols=[UNIQUE_ID_COLUMN]
+                    )
+                except Exception:
+                    df_old = pd.read_excel(old_file, sheet_name=old_sheet_name, engine='openpyxl')
 
         print(f"  - Reading new report: '{original_renamed_path}'")
 
@@ -331,7 +339,44 @@ def process_reports(old_file, new_file, tracker_file):
             os.rename(original_renamed_path, new_file)
             return
 
-        df_new = pd.read_excel(original_renamed_path, sheet_name=new_sheet_name, engine='openpyxl')
+        # Optimize: read only required columns and pin dtypes for string-heavy fields
+        required_cols = [
+            'STATUS', 'GRACE PERIOD', 'NAME', 'TR SEVERITY', 'PROJECT_NAME',
+            'PROBLEM_TITLE', 'CWE', 'CVE', 'PACKAGE_NAME_AND_VERSION', 'ID',
+            'PROJECT_TARGET', 'ISSUE_URL', 'CVE_URL'
+        ]
+        dtype_map = {
+            'STATUS': str,
+            'NAME': str,
+            'TR SEVERITY': str,
+            'PROJECT_NAME': str,
+            'PROBLEM_TITLE': str,
+            'CWE': str,
+            'CVE': str,
+            'PACKAGE_NAME_AND_VERSION': str,
+            'ID': str,
+            'PROJECT_TARGET': str,
+            'ISSUE_URL': str,
+            'CVE_URL': str,
+        }
+        try:
+            df_new = pd.read_excel(
+                original_renamed_path,
+                sheet_name=new_sheet_name,
+                engine='openpyxl',
+                usecols=required_cols,
+                dtype=dtype_map
+            )
+        except Exception:
+            df_new = pd.read_excel(original_renamed_path, sheet_name=new_sheet_name, engine='openpyxl')
+        # Normalize NA values and ensure string dtype for key columns even if fallback path was used
+        df_new = df_new.fillna('')
+        for col in ['TR SEVERITY', 'STATUS', 'PROJECT_NAME', 'NAME']:
+            if col in df_new.columns:
+                try:
+                    df_new[col] = df_new[col].astype(str)
+                except Exception:
+                    pass
         if df_old.empty:
             df_old = pd.DataFrame(columns=df_new.columns)
 
@@ -519,83 +564,27 @@ def process_reports(old_file, new_file, tracker_file):
             print("  - Applied conditional formatting for 'Critical' severity.")
 
         if 'PROJECT_NAME' in new_items_df.columns:
-            project_col_idx = new_items_df.columns.get_loc('PROJECT_NAME')
-            hidden_count = 0
-            for row in target_sheet.iter_rows(min_row=2, max_row=len(new_items_df) + 1):
-                if 'docker' in str(row[project_col_idx].value).lower():
-                    target_sheet.row_dimensions[row[0].row].hidden = True
-                    hidden_count += 1
+            docker_mask = new_items_df['PROJECT_NAME'].astype(str).str.contains('docker', case=False, na=False)
+            hidden_count = int(docker_mask.sum())
+            row_base = 2
+            for offset, is_docker in enumerate(docker_mask.tolist()):
+                if is_docker:
+                    target_sheet.row_dimensions[row_base + offset].hidden = True
             print(f"  - Hid {hidden_count} 'docker' related projects.")
 
         target_sheet.auto_filter.ref = target_sheet.dimensions
         
         print("  - Adjusting column widths and formats for 'Working sheet'...")
-        columns_to_autosize = [
-            'STATUS', 'GRACE PERIOD', 'NAME', 'TR SEVERITY', 'PROJECT_NAME', 
-            'PROBLEM_TITLE', 'CWE', 'CVE', 'PACKAGE_NAME_AND_VERSION', 
-            'PROJECT_TARGET', 'ISSUE_URL'
-        ]
-        
-        def _display_len(val):
-            try:
-                s = '' if val is None else str(val)
-                s = s.strip()
-                # For HYPERLINK formulas, extract the display text (second parameter)
-                if s.upper().startswith('=HYPERLINK('):
-                    try:
-                        # Extract the display text from =HYPERLINK("url","text")
-                        inner = s[len('=HYPERLINK('):-1]
-                        parts = []
-                        current = ''
-                        in_quotes = False
-                        for ch in inner:
-                            if ch == '"':
-                                in_quotes = not in_quotes
-                                current += ch
-                            elif ch == ',' and not in_quotes:
-                                parts.append(current.strip())
-                                current = ''
-                            else:
-                                current += ch
-                        if current:
-                            parts.append(current.strip())
-                        # Use display text (2nd parameter) if available, otherwise URL (1st parameter)
-                        if len(parts) >= 2:
-                            text_part = parts[1]
-                            if text_part.startswith('"') and text_part.endswith('"'):
-                                text_part = text_part[1:-1]
-                            return max(len(text_part), 0)
-                        elif len(parts) >= 1:
-                            url_part = parts[0]
-                            if url_part.startswith('"') and url_part.endswith('"'):
-                                url_part = url_part[1:-1]
-                            return max(len(url_part), 0)
-                    except:
-                        pass
-                return max(len(s), 0)
-            except Exception:
-                return 0
-
-        for col_idx, column_header in enumerate(new_items_df.columns, 1):
+        for col_idx, column_header in enumerate(display_df.columns, 1):
             column_letter = get_column_letter(col_idx)
-            
             if column_header == 'GRACE PERIOD':
                 for cell in target_sheet[column_letter][1:]:
                     cell.number_format = 'MM/DD/YYYY'
                     cell.alignment = Alignment(horizontal='center')
-
-            if column_header in columns_to_autosize:
-                max_length = _display_len(column_header)
-                for cell in target_sheet[column_letter]:
-                    try:
-                        l = _display_len(cell.value)
-                        if l > max_length:
-                            max_length = l
-                    except:
-                        pass
-                # Standard padding for Excel/Google Sheets
-                adjusted_width = (max_length + 2)
-                target_sheet.column_dimensions[column_letter].width = adjusted_width
+            series = display_df[column_header].astype(str)
+            max_length = max(len(str(column_header)), int(series.map(len).max() or 0))
+            adjusted_width = max_length + 2
+            target_sheet.column_dimensions[column_letter].width = adjusted_width
         
         # Apply hyperlink formatting to Working sheet
         apply_hyperlink_formatting(target_sheet, new_items_df)
@@ -728,32 +717,22 @@ def process_reports(old_file, new_file, tracker_file):
                 except Exception:
                     return 0
 
-            for col_idx, header in enumerate(tracker_df.columns, 1):
+            for col_idx, header in enumerate(tracker_display_df.columns, 1):
                 column_letter = get_column_letter(col_idx)
                 if header == 'Grace Period':
                     for cell in tracker_sheet[column_letter][1:]:
-                         cell.number_format = 'MM/DD/YYYY'
-                         cell.alignment = Alignment(horizontal='center')
+                        cell.number_format = 'MM/DD/YYYY'
+                        cell.alignment = Alignment(horizontal='center')
                 elif header == 'Report date':
                     for cell in tracker_sheet[column_letter][1:]:
                         cell.number_format = 'MM/DD/YYYY'
                         cell.alignment = Alignment(horizontal='center')
-                elif header != 'Issue URL':  # Center align all columns except Issue URL
+                elif header != 'Issue URL':
                     for cell in tracker_sheet[column_letter][1:]:
                         cell.alignment = Alignment(horizontal='center')
-                
-                max_length = _display_len(header)
-                for cell in tracker_sheet[column_letter]:
-                    try:
-                        l = _display_len(cell.value)
-                        if l > max_length:
-                            max_length = l
-                    except:
-                        pass
-                
-                # Standard width calculation for all columns
-                adjusted_width = (max_length + 2)
-                
+                series = tracker_display_df[header].astype(str)
+                max_length = max(len(str(header)), int(series.map(len).max() or 0))
+                adjusted_width = max_length + 2
                 tracker_sheet.column_dimensions[column_letter].width = adjusted_width
             # Apply hyperlink formatting to Vulnerability Tracker sheet
             apply_hyperlink_formatting(tracker_sheet, tracker_df, 'Ticket link', 'Issue URL')
@@ -809,10 +788,10 @@ def process_reports(old_file, new_file, tracker_file):
                 issue_col_idx_ext = _header_idx(headers_ext, 'Issue URL')
                 if issue_col_idx_ext:
                     existing_urls = set()
-                    for row_cells in ws_ext.iter_rows(min_row=2, max_row=ws_ext.max_row):
-                        cell = row_cells[issue_col_idx_ext - 1]
-                        if cell.value:
-                            existing_urls.add(str(cell.value).strip().lower())
+                    for row_cells in ws_ext.iter_rows(min_row=2, max_row=ws_ext.max_row, values_only=True):
+                        cell_val = row_cells[issue_col_idx_ext - 1]
+                        if cell_val:
+                            existing_urls.add(str(cell_val).strip().lower())
                 else:
                     existing_urls = set()
 
