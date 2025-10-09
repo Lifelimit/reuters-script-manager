@@ -60,6 +60,11 @@ function App() {
   const lastFileCheckSummaryRef = useRef<string | null>(null);
   const scriptStdoutSubRef = useRef<null | (() => void)>(null);
   const scriptExitSubRef = useRef<null | (() => void)>(null);
+  // Run status and manual mode
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [lastExitCode, setLastExitCode] = useState<number | null>(null);
+  const [manualMode, setManualMode] = useState<boolean>(false);
+  const [manualFiles, setManualFiles] = useState<Record<string, string>>({});
   // Handler to open documentation modal
   const handleOpenDoc = async (doc: 'readme' | 'guide') => {
     let file = '';
@@ -313,6 +318,8 @@ function App() {
     }
 
     try {
+      setIsRunning(true);
+      setLastExitCode(null);
       if (isBrowserPreview) {
         // Simulate a short run with output lines and success
         setOutput((p) => p + `Launching script: ${selectedLabel}\n`);
@@ -327,16 +334,22 @@ function App() {
           setOutput((p) => p + ln + '\n');
         }
         setOutput((p) => p + 'Process exited with code 0\n');
+        setLastExitCode(0);
+        setIsRunning(false);
       } else {
+        const manualList = manualMode
+          ? Object.values(manualFiles).filter(Boolean)
+          : [];
         const result = await invoke<string>('launch_script', {
           script_path: selectedScript,
           scriptPath: selectedScript,
-          args: { script_path: selectedScript, scriptPath: selectedScript }
+          args: { script_path: selectedScript, scriptPath: selectedScript, manual_files: manualList }
         });
         setOutput(prev => prev + `${result}\n`);
       }
     } catch (error) {
       setOutput(prev => prev + `Error: ${error}\n`);
+      setIsRunning(false);
     }
   };
 
@@ -572,8 +585,13 @@ function App() {
               const payload = evt.payload as { code?: number | null };
               const codeText = (payload && 'code' in payload) ? String(payload.code) : 'unknown';
               setOutput((p) => p + `Process exited with code ${codeText}\n`);
+              const codeNum = payload && typeof payload.code === 'number' ? payload.code : null;
+              setLastExitCode(codeNum);
+              setIsRunning(false);
             } catch {
               setOutput((p) => p + 'Process exited\n');
+              setLastExitCode(null);
+              setIsRunning(false);
             }
           });
         }
@@ -655,6 +673,32 @@ function App() {
     }
   };
 
+  // Manual mode handlers
+  const handleToggleManualMode = (enabled: boolean) => {
+    setManualMode(enabled);
+    // Reset manual selections when toggled off
+    if (!enabled) {
+      setManualFiles({});
+    }
+  };
+
+  const handleSelectInputFile = async (name: string) => {
+    try {
+      if (isBrowserPreview) {
+        // Simulate a selected path
+        const fakePath = `/path/to/${name.replace(/\s+/g, '_')}.xlsx`;
+        setManualFiles((prev) => ({ ...prev, [name]: fakePath }));
+        setOutput((p) => p + `Selected input for '${name}': ${fakePath}\n`);
+      } else {
+        const path = await invoke<string>('browse_input_file');
+        setManualFiles((prev) => ({ ...prev, [name]: path }));
+        setOutput((p) => p + `Selected input for '${name}': ${path}\n`);
+      }
+    } catch (e) {
+      // user cancelled
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-app-dark text-app-text">
       <Header />
@@ -679,6 +723,13 @@ function App() {
             isCheckingRequirements={isCheckingRequirements}
             deps={deps}
             requiredFilesStatus={requiredFilesStatus}
+            isRunning={isRunning}
+            lastExitCode={lastExitCode ?? undefined}
+            manualMode={manualMode}
+            requiredFileNames={scriptMetadata?.required_files}
+            manualFiles={manualFiles}
+            onToggleManualMode={handleToggleManualMode}
+            onSelectInputFile={handleSelectInputFile}
           />
           
           <ScriptOutputViewer

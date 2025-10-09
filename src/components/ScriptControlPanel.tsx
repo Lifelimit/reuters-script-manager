@@ -22,6 +22,14 @@ interface ScriptControlPanelProps {
   isCheckingRequirements?: boolean;
   deps: Dependency[] | null;
   requiredFilesStatus: RequiredFileStatus[] | null;
+  // New props for banners and manual mode
+  isRunning?: boolean;
+  lastExitCode?: number;
+  manualMode?: boolean;
+  requiredFileNames?: string[] | undefined;
+  manualFiles?: Record<string, string>;
+  onToggleManualMode?: (enabled: boolean) => void;
+  onSelectInputFile?: (name: string) => void;
 }
 
 const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
@@ -35,7 +43,14 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   onCheckRequirements,
   isCheckingRequirements = false,
   deps,
-  requiredFilesStatus
+  requiredFilesStatus,
+  isRunning = false,
+  lastExitCode,
+  manualMode = false,
+  requiredFileNames,
+  manualFiles = {},
+  onToggleManualMode,
+  onSelectInputFile
 }) => {
   const [dropdownValue, setDropdownValue] = useState('Snyk Report Compare');
 
@@ -54,6 +69,13 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
 
   const requirementsMet = allRequirementsMet();
 
+  // Manual mode gating: require selections for each required file name
+  const manualSelectionsComplete = manualMode
+    ? (requiredFileNames && requiredFileNames.length > 0
+        ? requiredFileNames.every((n) => manualFiles && !!manualFiles[n])
+        : true)
+    : true;
+
   const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setDropdownValue(value);
@@ -67,6 +89,27 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
 
   return (
     <div className="topbar">
+      {/* Status Banners */}
+      {isRunning && (
+        <div className="mb-4 p-3 rounded-md border border-blue-600 bg-blue-900 text-blue-100 flex items-center space-x-2">
+          <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+          </svg>
+          <span className="font-medium">Running...</span>
+        </div>
+      )}
+      {!isRunning && typeof lastExitCode !== 'undefined' && lastExitCode === 0 && (
+        <div className="mb-4 p-3 rounded-md border border-green-600 bg-green-900 text-green-100 flex items-center space-x-2">
+          <span>✅ Completed successfully</span>
+        </div>
+      )}
+      {!isRunning && typeof lastExitCode !== 'undefined' && lastExitCode !== null && lastExitCode !== 0 && (
+        <div className="mb-4 p-3 rounded-md border border-red-600 bg-red-900 text-red-100 flex items-center space-x-2">
+          <span>❌ Exited with code {lastExitCode}</span>
+        </div>
+      )}
+
       {/* Script Selector Section */}
       <div className="mb-6">
         <div className="flex items-center space-x-4">
@@ -118,20 +161,45 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
         <div className="space-y-3">
           <button
             onClick={onRunScript}
-            disabled={!selectedScript && dropdownValue === 'Snyk Report Compare' || !requirementsMet}
+            disabled={isRunning || (!requirementsMet && !manualMode) || !manualSelectionsComplete}
             className={`w-full text-lg py-3 flex items-center justify-center space-x-2 disabled:cursor-not-allowed transition-colors duration-200 rounded-md font-medium ${
-              !requirementsMet 
-                ? 'bg-red-600 text-white opacity-75' 
-                : 'button-primary hover:bg-blue-700'
+              isRunning
+                ? 'bg-blue-700 text-white opacity-80'
+                : (!requirementsMet && !manualMode
+                    ? 'bg-red-600 text-white opacity-75'
+                    : 'button-primary hover:bg-blue-700')
             }`}
-            title={!requirementsMet ? "Requirements not met - please check dependencies and required files" : "Run the selected script using the managed Python environment"}
+            title={
+              isRunning
+                ? 'Script is currently running'
+                : (!requirementsMet && !manualMode
+                    ? 'Requirements not met - please check dependencies and required files'
+                    : (manualMode && !manualSelectionsComplete
+                        ? 'Please select all required input files'
+                        : 'Run the selected script using the managed Python environment'))
+            }
           >
-            {!requirementsMet ? (
+            {isRunning ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <span>Running...</span>
+              </>
+            ) : (!requirementsMet && !manualMode) ? (
               <>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
                 <span>Requirements Not Met</span>
+              </>
+            ) : (manualMode && !manualSelectionsComplete) ? (
+              <>
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 9h6v2H7V9z" clipRule="evenodd" />
+                </svg>
+                <span>Select All Inputs</span>
               </>
             ) : (
               <>
@@ -155,6 +223,49 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Manual Mode Section */}
+      <div className="mb-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <span className="text-sm font-medium text-app-text">Manual Mode</span>
+          <label className="inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              className="form-checkbox h-4 w-4 text-blue-600"
+              checked={manualMode}
+              onChange={(e) => onToggleManualMode && onToggleManualMode(e.target.checked)}
+            />
+            <span className="ml-2 text-xs text-app-muted">Select required input files manually before running</span>
+          </label>
+        </div>
+        {manualMode && requiredFileNames && requiredFileNames.length > 0 && (
+          <div className="space-y-2">
+            {requiredFileNames.map((name) => {
+              const selected = manualFiles && manualFiles[name];
+              return (
+                <div key={name} className="flex items-center justify-between bg-app-darker p-2 rounded-md border border-app-border">
+                  <div className="flex-1">
+                    <div className="text-xs text-app-muted">Required:</div>
+                    <div className="text-sm text-app-text truncate" title={name}>{name}</div>
+                    {selected && (
+                      <div className="text-xs text-green-300 truncate" title={selected}>Selected: {selected}</div>
+                    )}
+                  </div>
+                  <div>
+                    <button
+                      className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-md text-xs font-medium transition-colors duration-200"
+                      onClick={() => onSelectInputFile && onSelectInputFile(name)}
+                      title={`Choose file for ${name}`}
+                    >
+                      📁 Choose File
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Removed Selected Script panel for cleaner UI */}

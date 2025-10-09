@@ -879,6 +879,8 @@ async fn launch_script(
     cmd.current_dir(&script_dir);
 
     // Derive preferred WORKING_DIR similar to metadata analyzer and pass via environment
+    // Default to script directory; adjust based on known script patterns
+    let mut working_dir = script_dir.clone();
     if let Some(fname) = abs_path.file_name().and_then(|s| s.to_str()) {
         use std::fs::read_dir;
         let has_xlsx = |dir: &std::path::Path| read_dir(dir).map(|rd| rd.flatten().any(|e| {
@@ -897,7 +899,6 @@ async fn launch_script(
         let script_snyk = workspace_root.join("Script Way").join("Snyk Report Compare");
         let script_datadome = workspace_root.join("Script Way").join("DataDome Verified Bots Compare");
 
-        let mut working_dir = script_dir.clone();
         let lower = fname.to_lowercase();
         if lower.contains("snyk_compare.py") {
             if has_xlsx(&snyk_portable) { working_dir = snyk_portable; }
@@ -914,12 +915,34 @@ async fn launch_script(
             else if app_datadome.exists() { working_dir = app_datadome; }
             else if script_datadome.exists() { working_dir = script_datadome; }
         }
-
-        // Export as environment so Python can pick it up
-        cmd.env("WORKING_DIR", &working_dir);
-        let archive_dir = working_dir.join("_archive");
-        cmd.env("ARCHIVE_DIR", &archive_dir);
     }
+
+    // Copy manual input files into working_dir if provided
+    if let Some(a) = args.as_ref() {
+        if let Some(mf) = a.get("manual_files").and_then(|v| v.as_array()) {
+            for p in mf {
+                if let Some(src) = p.as_str() {
+                    let src_path = PathBuf::from(src);
+                    if !src_path.exists() {
+                        return Err(format!("manual input not found: {}", src));
+                    }
+                    let fname = src_path.file_name().ok_or_else(|| format!("invalid input path: {}", src))?;
+                    let dest = working_dir.join(fname);
+                    // Ensure working_dir exists
+                    if let Err(e) = std::fs::create_dir_all(&working_dir) { return Err(format!("failed to ensure working dir: {}", e)); }
+                    // Copy overwrite
+                    if let Err(e) = std::fs::copy(&src_path, &dest) {
+                        return Err(format!("failed to copy '{}' to '{}': {}", src_path.to_string_lossy(), dest.to_string_lossy(), e));
+                    }
+                }
+            }
+        }
+    }
+
+    // Export as environment so Python can pick it up
+    cmd.env("WORKING_DIR", &working_dir);
+    let archive_dir = working_dir.join("_archive");
+    cmd.env("ARCHIVE_DIR", &archive_dir);
 
     // Spawn the process and stream output
     match cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn() {
@@ -977,6 +1000,20 @@ async fn browse_file() -> Result<String, String> {
         .add_filter("Python Scripts", &["py"])
         .add_filter("All Files", &["*"])
         .set_title("Select Script File")
+        .pick_file()
+    {
+        Some(path) => Ok(path.to_string_lossy().to_string()),
+        None => Err("No file selected".to_string()),
+    }
+}
+
+// Command to open a native file dialog for selecting input files (e.g., .xlsx)
+#[tauri::command]
+async fn browse_input_file() -> Result<String, String> {
+    match FileDialogBuilder::new()
+        .add_filter("Excel Files", &["xlsx"])
+        .add_filter("All Files", &["*"])
+        .set_title("Select Input File")
         .pick_file()
     {
         Some(path) => Ok(path.to_string_lossy().to_string()),
@@ -1102,6 +1139,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launch_script,
             browse_file,
+            browse_input_file,
             read_script_metadata,
             setup_python_env,
             check_python_deps,
