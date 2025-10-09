@@ -68,9 +68,7 @@
         "../scripts/datadome_compare.py",
         "../Documents/Main/requirements.txt",
         "../Documents/Main/README.md",
-        "../Documents/Snyk Report Compare/README.md",
         "../Documents/Snyk Report Compare/Snyk_Compare_Script_User_Guide.md",
-        "../Documents/DataDome Verified Bots Compare/README.md",
         "../Documents/DataDome Verified Bots Compare/DataDome_Compare_Script_User_Guide.md"
       ]
     },
