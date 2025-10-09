@@ -340,12 +340,7 @@ def process_reports(old_file, new_file, tracker_file):
             os.rename(original_renamed_path, new_file)
             return
 
-        # Optimize: read only required columns and pin dtypes for string-heavy fields
-        required_cols = [
-            'STATUS', 'GRACE PERIOD', 'NAME', 'TR SEVERITY', 'PROJECT_NAME',
-            'PROBLEM_TITLE', 'CWE', 'CVE', 'PACKAGE_NAME_AND_VERSION', 'ID',
-            'PROJECT_TARGET', 'ISSUE_URL', 'CVE_URL'
-        ]
+        # Read full sheet to preserve all columns for Manual sheet, while pinning dtypes for key columns
         dtype_map = {
             'STATUS': str,
             'NAME': str,
@@ -365,7 +360,6 @@ def process_reports(old_file, new_file, tracker_file):
                 original_renamed_path,
                 sheet_name=new_sheet_name,
                 engine='openpyxl',
-                usecols=required_cols,
                 dtype=dtype_map
             )
         except Exception:
@@ -634,28 +628,29 @@ def process_reports(old_file, new_file, tracker_file):
         manual_sheet.delete_rows(2, manual_sheet.max_row + 1)
         manual_sheet.insert_cols(ticket_col_pos + 1)
         manual_sheet.cell(row=1, column=ticket_col_pos + 1).value = 'Ticket'
+        # Ensure header exists for the adjacent 'Needs Action' column we add in DataFrame
+        manual_sheet.cell(row=1, column=ticket_col_pos + 2).value = 'Needs Action'
 
-        # Manual sheet uses df_new (full data), with Ticket set to status (new/old/ignore-docker-image)
-        # and overlaid with existing Ticket links if found in tracker
+        # Manual sheet uses df_new (full data), preserving existing STATUS and Business criticality.
+        # Ticket column is populated per rules: ADO ticket if exists; else 'New' for new lines;
+        # 'Ignore-Docker' for new docker-image lines; otherwise 'Existing'.
         manual_df = df_new.copy()
         # Ensure Ticket column exists without altering filters
         if 'Ticket' not in manual_df.columns:
-            # Baseline status: new vs old using old_urls computed earlier
+            # Baseline new vs existing using old_urls computed earlier
             issue_series = manual_df[UNIQUE_ID_COLUMN].astype(str).str.strip()
-            # Define lowercase keys once for reuse across mappings
-            manual_issue_keys = issue_series.str.lower()
             is_new_mask = ~issue_series.isin(old_urls)
-            # Default to 'old'; mark 'new' explicitly and keep docker marker
-            status_series = pd.Series('old', index=manual_df.index)
-            status_series[is_new_mask] = 'new'
-            # Mark docker-related rows only for items deemed 'new' using preferred reference, with fallbacks
-            docker_new_mask = pd.Series(False, index=manual_df.index)
+            # Docker detection (broader) applied to all rows, not only new items
+            docker_mask = pd.Series(False, index=manual_df.index)
             if 'PROJECT_TARGET_REFERENCE' in manual_df.columns:
-                docker_new_mask = docker_new_mask | manual_df['PROJECT_TARGET_REFERENCE'].astype(str).str.startswith('docker-image', na=False)
+                ptr = manual_df['PROJECT_TARGET_REFERENCE'].astype(str)
+                docker_mask = docker_mask | ptr.str.startswith('docker-image', na=False) | ptr.str.contains('docker', case=False, na=False)
             if 'PROJECT_TARGET' in manual_df.columns:
-                docker_new_mask = docker_new_mask | manual_df['PROJECT_TARGET'].astype(str).str.startswith('docker-image', na=False)
-            docker_new_mask = is_new_mask & docker_new_mask
-            status_series[docker_new_mask] = 'ignore-docker-image'
+                pt = manual_df['PROJECT_TARGET'].astype(str)
+                docker_mask = docker_mask | pt.str.startswith('docker-image', na=False) | pt.str.contains('docker', case=False, na=False)
+            if 'PROJECT_ORIGIN' in manual_df.columns:
+                po = manual_df['PROJECT_ORIGIN'].astype(str)
+                docker_mask = docker_mask | po.str.contains('docker', case=False, na=False)
 
             # Recompute ticket_data for full set using tracker mapping
             ticket_series_map = pd.Series([None] * len(manual_df), index=manual_df.index)
@@ -720,6 +715,9 @@ def process_reports(old_file, new_file, tracker_file):
                             df_old_ticket = df_old_ticket.fillna('')
                             df_old_ticket[UNIQUE_ID_COLUMN] = df_old_ticket[UNIQUE_ID_COLUMN].astype(str).str.strip().str.lower()
                             df_old_ticket['Ticket'] = df_old_ticket['Ticket'].astype(str).str.strip()
+                            # Sanitize: remove any status-like strings from old Ticket values
+                            status_like = df_old_ticket['Ticket'].str.lower().isin(['new', 'old', 'ignore-docker', 'ignore-docker-image', 'existing'])
+                            df_old_ticket.loc[status_like, 'Ticket'] = ''
                             df_old_ticket['Ticket'] = df_old_ticket['Ticket'].replace('', pd.NA)
                             old_map = dict(zip(df_old_ticket[UNIQUE_ID_COLUMN], df_old_ticket['Ticket']))
                             # Map using full Issue URL lowercase keys to match old report
@@ -727,9 +725,9 @@ def process_reports(old_file, new_file, tracker_file):
                             old_ticket_series_map = manual_issue_keys_url.map(old_map)
             except Exception:
                 pass
-            # Combine: prefer tracker ticket links; then old report ticket; otherwise use status string
-            combined_ticket_series = ticket_series_map.combine_first(old_ticket_series_map).combine_first(status_series)
-            # Insert Ticket as hyperlinks/text
+            # Combine: prefer tracker ticket links; then old report ticket; otherwise leave empty
+            combined_ticket_series = ticket_series_map.combine_first(old_ticket_series_map)
+            # Insert Ticket per rules
             def _manual_hlink(data):
                 if isinstance(data, tuple) and len(data) == 2:
                     text, link = data
@@ -748,7 +746,26 @@ def process_reports(old_file, new_file, tracker_file):
                     return s
                 return ''
             ticket_insert_pos = manual_df.columns.get_loc('ID') + 1 if 'ID' in manual_df.columns else 0
-            manual_df.insert(ticket_insert_pos, 'Ticket', combined_ticket_series.apply(_manual_hlink))
+            # Build placeholder strings when no ADO ticket exists
+            empty_mask = combined_ticket_series.isna() | (combined_ticket_series.astype(str).str.strip() == '')
+            placeholders = pd.Series('', index=manual_df.index)
+            placeholders[docker_mask & empty_mask] = 'Ignore-Docker'
+            placeholders[is_new_mask & (~docker_mask) & empty_mask] = 'New'
+            placeholders[(~is_new_mask) & (~docker_mask) & empty_mask] = 'Existing'
+            final_ticket = combined_ticket_series.copy()
+            # Where we have a ticket link, keep it; else use placeholder
+            final_ticket[empty_mask] = placeholders[empty_mask]
+            manual_df.insert(ticket_insert_pos, 'Ticket', final_ticket.apply(_manual_hlink))
+
+            # Derive Needs Action: New items that are not docker and have no ticket
+            needs_action_series = pd.Series('No', index=manual_df.index)
+            # Build emptiness mask for Ticket column prior to hyperlink conversion
+            ticket_empty_mask = combined_ticket_series.isna() | (combined_ticket_series.astype(str).str.strip() == '')
+            # Needs Action stays as-is: New and non-docker without ticket links
+            needs_mask = is_new_mask & (~docker_mask) & ticket_empty_mask
+            needs_action_series[needs_mask] = 'Yes'
+            # Insert Needs Action column immediately after Ticket
+            manual_df.insert(ticket_insert_pos + 1, 'Needs Action', needs_action_series)
 
         # Convert Issue URL column to hyperlinks for manual sheet
         if 'ISSUE_URL' in manual_df.columns:
