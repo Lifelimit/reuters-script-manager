@@ -66,7 +66,7 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
       </div>
 
       {/* Output Area */}
-      <div className="flex-1 min-h-0 bg-app-panel border border-app-border rounded-lg">
+      <div className="flex-1 min-h-0 panel panel-rounded">
         <div ref={scrollerRef} className="h-full overflow-y-auto">
           {renderOutput()}
         </div>

@@ -83,7 +83,7 @@ function App() {
     try {
       if (isBrowserPreview) {
         // Load documentation using Vite glob in preview mode
-        const docs = import.meta.glob('../Documents/**/*.md', { as: 'raw', eager: true });
+        const docs = import.meta.glob('../Documents/**/*.md', { query: '?raw', import: 'default', eager: true });
         let content: string | undefined;
         if (doc === 'readme') {
           content = docs['../Documents/Main/README.md'] as string | undefined;
@@ -661,7 +661,7 @@ function App() {
       
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel - Script Details */}
-        <div className="w-80 bg-app-panel panel-border border-r">
+        <div className="w-80 panel panel-border border-r">
           <ScriptDetailsPanel metadata={scriptMetadata} deps={deps || undefined} requiredFilesStatus={requiredFilesStatus || undefined} />
         </div>
         
