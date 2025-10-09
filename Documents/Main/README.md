@@ -41,7 +41,7 @@ The app automatically checks for required files. Place them in the same director
 
 - Top bar: Open README and the script’s User Guide
 - Left panel: Script details, working directory, dependencies, and required files
-- Right panel: Controls for selecting, repairing, and running scripts
+- Right panel: Controls for selecting, resetting, checking requirements, repairing, and running scripts
 - Bottom panel: Real-time output and status
 
 ---
@@ -51,7 +51,25 @@ The app automatically checks for required files. Place them in the same director
 - Browse: Select a script file to run
 - Repair: Automatically set up the Python environment if needed
 - Check Requirements: Re-validate files if you’ve added/changed them
+- Reset: Restore the panel to its initial state for the current script
 - Reveal: Open the working folder in your file explorer
+
+---
+
+## 🧩 Manual Mode (Optional)
+
+- Toggle Manual Mode to select input files directly via file pickers
+- When Manual Mode is enabled, automatic file checking is hidden
+- Turn Manual Mode off to return to automatic file discovery
+
+---
+
+## 📈 Run Progress and Completion
+
+- Progress maps to distinct steps shown during execution
+- The compact “Completed” pill appears only for successful runs
+- Switching scripts clears progress and completion state
+- Use Reset to clear output, progress, and manual inputs without changing the selected script
 
 ---
 
@@ -70,6 +88,9 @@ The app automatically checks for required files. Place them in the same director
 - Environment issues: Click Repair to recreate the Python environment
 - Permission errors: Ensure files aren’t locked or restricted
 - Unexpected messages: Review the output panel for details
+- Progress stuck: Switch scripts or click Reset to clear and try again
+- Completion indicator: The compact "Completed" pill only appears after a successful run
+- Manual mode: Toggle off to hide file pickers and restore automatic file checking
 
 ---
 
