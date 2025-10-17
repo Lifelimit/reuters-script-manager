@@ -133,6 +133,101 @@ def extract_url_from_hyperlink(hyperlink_data):
     # Return as-is for plain strings or other formats
     return hyperlink_data
 
+def get_unique_identifier(row):
+    """Generate a unique identifier with fallback strategy when ISSUE_URL is not available.
+    
+    Hierarchical fallback system:
+    1. Primary: ISSUE_URL (maintains existing functionality)
+    2. Fallback 1: PROJECT_NAME + PACKAGE_NAME_AND_VERSION + CVE
+    3. Fallback 2: PROJECT_NAME + PROBLEM_TITLE + CWE  
+    4. Fallback 3: ID field (if available)
+    5. Fallback 4: PROJECT_URL + PACKAGE_NAME_AND_VERSION + CVE
+    6. Last resort: PROJECT_NAME + PACKAGE_NAME_AND_VERSION + PROBLEM_TITLE
+    
+    Returns tuple: (identifier, is_fallback_used)
+    """
+    # Primary: Use ISSUE_URL if available (existing functionality)
+    if pd.notna(row.get('ISSUE_URL')) and str(row.get('ISSUE_URL')).strip():
+        return str(row['ISSUE_URL']).strip(), False
+    
+    # Fallback 1: PROJECT_NAME + PACKAGE + CVE
+    if all(pd.notna(row.get(col)) and str(row.get(col)).strip() 
+           for col in ['PROJECT_NAME', 'PACKAGE_NAME_AND_VERSION', 'CVE']):
+        identifier = f"{row['PROJECT_NAME']}|{row['PACKAGE_NAME_AND_VERSION']}|{row['CVE']}"
+        return identifier, True
+    
+    # Fallback 2: PROJECT_NAME + PROBLEM_TITLE + CWE
+    if all(pd.notna(row.get(col)) and str(row.get(col)).strip() 
+           for col in ['PROJECT_NAME', 'PROBLEM_TITLE', 'CWE']):
+        identifier = f"{row['PROJECT_NAME']}|{row['PROBLEM_TITLE']}|{row['CWE']}"
+        return identifier, True
+    
+    # Fallback 3: Use ID if available
+    if pd.notna(row.get('ID')) and str(row.get('ID')).strip():
+        identifier = f"ID:{row['ID']}"
+        return identifier, True
+    
+    # Fallback 4: PROJECT_URL + PACKAGE + CVE
+    if all(pd.notna(row.get(col)) and str(row.get(col)).strip() 
+           for col in ['PROJECT_URL', 'PACKAGE_NAME_AND_VERSION', 'CVE']):
+        identifier = f"{row['PROJECT_URL']}|{row['PACKAGE_NAME_AND_VERSION']}|{row['CVE']}"
+        return identifier, True
+    
+    # Last resort: Generate from available fields
+    project = str(row.get('PROJECT_NAME', 'UNKNOWN')).strip() or 'UNKNOWN'
+    package = str(row.get('PACKAGE_NAME_AND_VERSION', 'UNKNOWN')).strip() or 'UNKNOWN'
+    problem = str(row.get('PROBLEM_TITLE', 'UNKNOWN')).strip() or 'UNKNOWN'
+    identifier = f"{project}|{package}|{problem}"
+    return identifier, True
+
+def build_fallback_ticket_map(ws, iu_idx, tl_idx, df_for_fallback):
+    """
+    Build a fallback ticket map using alternative unique identifiers.
+    
+    Args:
+        ws: openpyxl worksheet containing tracker data
+        iu_idx: Issue URL column index (1-based)
+        tl_idx: Ticket column index (1-based)
+        df_for_fallback: DataFrame containing vulnerability data for generating fallback IDs
+        
+    Returns:
+        dict: Mapping from fallback unique identifiers to ticket data
+    """
+    fallback_ticket_map = {}
+    
+    # Get headers for mapping
+    headers = [cell.value for cell in ws[1]] if ws.max_row >= 1 else []
+    
+    # Create a mapping from ISSUE_URL to row data for fallback generation
+    for row_cells in ws.iter_rows(min_row=2):
+        issue_cell = row_cells[iu_idx - 1]
+        ticket_cell = row_cells[tl_idx - 1]
+        raw_issue = issue_cell.value
+        normalized_issue = extract_url_from_hyperlink(raw_issue)
+        issue_value = str(normalized_issue).strip() if normalized_issue else ''
+        
+        # Get all cell values for this row to create a pseudo-row for fallback ID generation
+        row_data = {}
+        for i, cell in enumerate(row_cells):
+            if i < len(headers) and headers[i]:
+                # Normalize header names to match DataFrame columns
+                header_name = str(headers[i]).upper().replace(' ', '_')
+                row_data[header_name] = cell.value
+        
+        # If no ISSUE_URL, try to generate fallback ID
+        if not issue_value and row_data:
+            # Convert to pandas Series for compatibility with get_unique_identifier
+            row_series = pd.Series(row_data)
+            fallback_id, is_fallback = get_unique_identifier(row_series)
+            
+            # Only add if we have a valid ticket and it's a fallback
+            if is_fallback:
+                display_text, link_target = _parse_ticket_cell_value(ticket_cell)
+                if display_text and (link_target or str(display_text).strip()):
+                    fallback_ticket_map[fallback_id.lower()] = (display_text, link_target)
+    
+    return fallback_ticket_map
+
 def _parse_ticket_cell_value(cell):
     """Extract display text and URL from a tracker 'Ticket link' cell.
     Supports real hyperlinks and HYPERLINK() formulas, and plain URLs.
@@ -459,7 +554,28 @@ def process_reports(old_file, new_file, tracker_file):
                         issue_keys_id = new_items_df['ISSUE_URL'].apply(extract_url_from_hyperlink).astype(str).str.strip()
                         issue_keys = issue_keys_id.str.lower()
                         ticket_data = issue_keys.map(ticket_map)
-                        print(f"  - Success: Found and mapped {ticket_data.notna().sum()} existing tickets from the tracker.")
+                        primary_matches = ticket_data.notna().sum()
+                        print(f"  - Success: Found and mapped {primary_matches} existing tickets from the tracker using ISSUE_URL.")
+                        
+                        # Build fallback ticket map for items without ISSUE_URL matches
+                        fallback_ticket_map = build_fallback_ticket_map(ws, iu_idx, tl_idx, new_items_df)
+                        
+                        # Apply fallback mapping for items that didn't match by ISSUE_URL
+                        if fallback_ticket_map:
+                            fallback_matches = 0
+                            for idx, row in new_items_df.iterrows():
+                                if pd.isna(ticket_data.loc[idx]) or not ticket_data.loc[idx]:
+                                    # Generate fallback ID for this row
+                                    fallback_id, is_fallback = get_unique_identifier(row)
+                                    if is_fallback and fallback_id.lower() in fallback_ticket_map:
+                                        ticket_data.loc[idx] = fallback_ticket_map[fallback_id.lower()]
+                                        fallback_matches += 1
+                            
+                            if fallback_matches > 0:
+                                print(f"  - Success: Found and mapped {fallback_matches} additional tickets using fallback identifiers.")
+                            
+                        total_matches = ticket_data.notna().sum()
+                        print(f"  - Total: {total_matches} tickets mapped ({primary_matches} primary + {total_matches - primary_matches} fallback).")
                     else:
                         print("\n[!] Tracker Warning: Tracker file is missing 'Issue URL' or 'Ticket link'/'Ticket' columns.")
                 else:
@@ -710,6 +826,16 @@ def process_reports(old_file, new_file, tracker_file):
                             manual_issue_keys_id = manual_df[UNIQUE_ID_COLUMN].apply(extract_url_from_hyperlink).astype(str).str.strip()
                             manual_issue_keys = manual_issue_keys_id.str.lower()
                             ticket_series_map = manual_issue_keys.map(ticket_map)
+                            
+                            # Apply fallback mapping for manual sheet items without ISSUE_URL matches
+                            fallback_ticket_map = build_fallback_ticket_map(ws, iu_idx, tl_idx, manual_df)
+                            if fallback_ticket_map:
+                                for idx, row in manual_df.iterrows():
+                                    if pd.isna(ticket_series_map.loc[idx]) or not ticket_series_map.loc[idx]:
+                                        # Generate fallback ID for this row
+                                        fallback_id, is_fallback = get_unique_identifier(row)
+                                        if is_fallback and fallback_id.lower() in fallback_ticket_map:
+                                            ticket_series_map.loc[idx] = fallback_ticket_map[fallback_id.lower()]
                     book_tracker.close()
                 except Exception:
                     pass
@@ -789,6 +915,37 @@ def process_reports(old_file, new_file, tracker_file):
             needs_action_series[needs_mask] = 'Yes'
             # Insert Needs Action column immediately after Ticket
             manual_df.insert(ticket_insert_pos + 1, 'Needs Action', needs_action_series)
+            
+            # Create Fallback Ticket column to show tickets generated via fallback identifiers
+            fallback_ticket_series = pd.Series('', index=manual_df.index)
+            has_fallback_tickets = False
+            
+            # Identify rows that used fallback identifiers for ticket mapping
+            for idx, row in manual_df.iterrows():
+                # Check if this row has a ticket but no ISSUE_URL
+                has_ticket = not pd.isna(combined_ticket_series.loc[idx]) and str(combined_ticket_series.loc[idx]).strip()
+                issue_url = extract_url_from_hyperlink(row.get('ISSUE_URL', ''))
+                has_issue_url = issue_url and str(issue_url).strip()
+                
+                if has_ticket and not has_issue_url:
+                    # This ticket was likely generated via fallback identifier
+                    fallback_id, is_fallback = get_unique_identifier(row)
+                    if is_fallback:
+                        # Show the ticket that was matched via fallback
+                        ticket_value = combined_ticket_series.loc[idx]
+                        if isinstance(ticket_value, tuple):
+                            display_text, link_target = ticket_value
+                            if link_target:
+                                fallback_ticket_series.loc[idx] = f'=HYPERLINK("{link_target}","{display_text}")'
+                            else:
+                                fallback_ticket_series.loc[idx] = str(display_text)
+                        else:
+                            fallback_ticket_series.loc[idx] = str(ticket_value)
+                        has_fallback_tickets = True
+            
+            # Only insert Fallback Ticket column if there are actually fallback tickets to show
+            if has_fallback_tickets:
+                manual_df.insert(ticket_insert_pos + 2, 'Fallback Ticket', fallback_ticket_series)
 
         # Convert Issue URL column to hyperlinks for manual sheet
         if 'ISSUE_URL' in manual_df.columns:
