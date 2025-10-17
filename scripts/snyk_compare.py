@@ -56,6 +56,18 @@ WORKING_SHEET_MANUAL_NAME = 'Working sheet - Manual'
 TRACKER_SHEET_NAME = 'Vulnerability Tracker'
 TRACKER_DATA_SHEET_NAME = 'Tickets' # Preferred sheet to read from in the tracker file
 UNIQUE_ID_COLUMN = 'ISSUE_URL'
+
+# Define the columns to be included in the regular 'Working sheet'
+WORKING_SHEET_COLUMNS = [
+    'STATUS', 'GRACE PERIOD', 'ID', 'NAME', 'SYSTEM OWNER', 'SECURITY TIER',
+    'BUSINESS CRITICALITY', 'APP STATUS', 'PRODUCT_NAME', 'PROJECT_LIFECYCLE',
+    'ISSUE_SEVERITY', 'SCORE', 'TR SEVERITY', 'PROJECT_URL', 'VULN_DB_URL',
+    'FIRST_INTRODUCED', 'AGE', 'PROJECT_ORIGIN', 'PROJECT_NAME', 'REACHABILITY',
+    'EXPLOIT_MATURITY', 'COMPUTED_FIXABILITY', 'PROBLEM_TITLE', 'CWE', 'OWASP',
+    'CVE', 'PACKAGE_NAME_AND_VERSION', 'PROJECT_TYPE', 'ISSUE_URL',
+    'ISSUE_STATUS', 'ORG_NAME'
+]
+
 # --- Directory Setup ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Working directory is the Snyk folder in the parent directory; allow env override
@@ -542,39 +554,50 @@ def process_reports(old_file, new_file, tracker_file):
         if existing_working_sheet_name:
             book.remove(book[existing_working_sheet_name])
         
-        target_sheet = book.copy_worksheet(source_sheet)
-        target_sheet.title = WORKING_SHEET_NAME
-        target_sheet.sheet_properties.tabColor = "00FF00"  # Green color
-        target_sheet.delete_rows(2, target_sheet.max_row + 1)
-        target_sheet.insert_cols(ticket_col_pos + 1)
-        target_sheet.cell(row=1, column=ticket_col_pos + 1).value = 'Ticket'
-
-        # Create a display version of the DataFrame for writing to Excel
-        display_df = new_items_df.copy()
+        # Create a display version of the DataFrame for writing to Excel with curated columns
+        # Filter to only include curated columns that exist in the data
+        available_columns = [col for col in WORKING_SHEET_COLUMNS if col in new_items_df.columns]
+        filtered_df = new_items_df[available_columns].copy()
+        print(f"  - Using {len(available_columns)} curated columns out of {len(new_items_df.columns)} total columns")
+        
+        # Add Ticket column to the filtered DataFrame at the correct position (after ID)
+        ticket_col_pos = filtered_df.columns.get_loc('ID') + 1 if 'ID' in filtered_df.columns else 0
+        # Filter ticket_data to match the filtered_df indices
+        filtered_ticket_data = ticket_data.loc[filtered_df.index]
+        filtered_df.insert(ticket_col_pos, 'Ticket', filtered_ticket_data.apply(create_hyperlink_from_tuple))
+        
+        display_df = filtered_df.copy()
         for col in display_df.columns:
-            display_df[col] = display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
+            if col != 'Ticket':  # Don't process the Ticket column
+                display_df[col] = display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
         
-        for r in dataframe_to_rows(display_df, index=False, header=False):
+        # Create new worksheet and write the filtered data with proper headers
+        target_sheet = book.create_sheet(title=WORKING_SHEET_NAME)
+        target_sheet.sheet_properties.tabColor = "00FF00"  # Green color
+        
+        # Write headers and data together to ensure alignment
+        for r in dataframe_to_rows(display_df, index=False, header=True):
             target_sheet.append(r)
-        print(f"  - Wrote {len(new_items_df)} items to the sheet.")
+        print(f"  - Wrote {len(filtered_df)} items to the sheet.")
         
-        if not new_items_df.empty and 'TR SEVERITY' in new_items_df.columns:
+        if not display_df.empty and 'TR SEVERITY' in display_df.columns:
             red_font = Font(color="9C0006")
             dxf = DifferentialStyle(font=red_font)
-            severity_col_letter = get_column_letter(new_items_df.columns.get_loc('TR SEVERITY') + 1)
-            rule_range = f"{severity_col_letter}2:{severity_col_letter}{len(new_items_df) + 1}"
+            severity_col_letter = get_column_letter(display_df.columns.get_loc('TR SEVERITY') + 1)
+            rule_range = f"{severity_col_letter}2:{severity_col_letter}{len(display_df) + 1}"
             critical_rule = Rule(type="cellIs", operator="equal", formula=['"Critical"'], dxf=dxf)
             target_sheet.conditional_formatting.add(rule_range, critical_rule)
             print("  - Applied conditional formatting for 'Critical' severity.")
 
         # Use precise docker detection aligned with compare.py: prefer PROJECT_TARGET_REFERENCE, fallback to PROJECT_TARGET
+        # Note: Use original new_items_df for docker detection since we need the full data for accurate filtering
         docker_mask = pd.Series(False, index=new_items_df.index)
         if 'PROJECT_TARGET_REFERENCE' in new_items_df.columns:
             docker_mask = docker_mask | new_items_df['PROJECT_TARGET_REFERENCE'].astype(str).str.startswith('docker-image', na=False)
         if 'PROJECT_TARGET' in new_items_df.columns:
             docker_mask = docker_mask | new_items_df['PROJECT_TARGET'].astype(str).str.startswith('docker-image', na=False)
         hidden_count = int(docker_mask.sum())
-        row_base = 2
+        row_base = 2  # Start from row 2 (after header)
         for offset, is_docker in enumerate(docker_mask.tolist()):
             if is_docker:
                 target_sheet.row_dimensions[row_base + offset].hidden = True
@@ -594,22 +617,24 @@ def process_reports(old_file, new_file, tracker_file):
             adjusted_width = max_length + 2
             target_sheet.column_dimensions[column_letter].width = adjusted_width
         
-        # Apply hyperlink formatting to Working sheet using the original data (with tuples)
-        apply_hyperlink_formatting(target_sheet, new_items_df)
+        # Apply hyperlink formatting to Working sheet using the filtered data structure
+        # We need to map the filtered columns back to the original data for hyperlink processing
+        apply_hyperlink_formatting(target_sheet, filtered_df)
         
-        # Hide empty CVE_URL column if it exists and is empty, but ensure CVE column stays visible
-        if 'CVE_URL' in new_items_df.columns:
-            cve_url_col_idx = new_items_df.columns.get_loc('CVE_URL') + 1
+        # Hide empty CVE_URL column if it exists in the filtered data and is empty
+        if 'CVE_URL' in filtered_df.columns:
+            cve_url_col_idx = filtered_df.columns.get_loc('CVE_URL') + 1
             cve_url_col_letter = get_column_letter(cve_url_col_idx)
-            # Check if CVE_URL column is mostly empty
-            cve_url_values = new_items_df['CVE_URL'].dropna()
-            if len(cve_url_values) == 0:  # Column is completely empty
-                target_sheet.column_dimensions[cve_url_col_letter].hidden = True
-                print("  - Hid empty CVE_URL column to avoid confusion.")
+            # Check if CVE_URL column is mostly empty in the original data
+            if 'CVE_URL' in new_items_df.columns:
+                cve_url_values = new_items_df['CVE_URL'].dropna()
+                if len(cve_url_values) == 0:  # Column is completely empty
+                    target_sheet.column_dimensions[cve_url_col_letter].hidden = True
+                    print("  - Hid empty CVE_URL column to avoid confusion.")
         
-        # Ensure CVE column is always visible
-        if 'CVE' in new_items_df.columns:
-            cve_col_idx = new_items_df.columns.get_loc('CVE') + 1
+        # Ensure CVE column is always visible if it exists in the filtered data
+        if 'CVE' in filtered_df.columns:
+            cve_col_idx = filtered_df.columns.get_loc('CVE') + 1
             cve_col_letter = get_column_letter(cve_col_idx)
             target_sheet.column_dimensions[cve_col_letter].hidden = False
             print("  - Ensured CVE column is visible.")
