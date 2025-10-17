@@ -180,7 +180,9 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
                 ? 'bg-blue-700 text-white opacity-80'
                 : (!requirementsMet && !manualMode
                     ? 'bg-red-600 text-white opacity-75'
-                    : 'button-primary hover:bg-blue-700')
+                    : (manualMode && !manualSelectionsComplete
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'button-primary hover:bg-blue-700'))
             }`}
             title={
               isRunning
