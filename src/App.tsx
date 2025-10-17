@@ -325,6 +325,8 @@ function App() {
     }
 
     try {
+      // Auto-clear output when starting a new run
+      setOutput('');
       setIsRunning(true);
       setLastExitCode(null);
       setRunProgress(0);
@@ -338,9 +340,13 @@ function App() {
           'Step 2',
           'Step 3',
           'Step 4',
+          'Step 4b',
           'Step 5',
+          'Step 5b',
           'Step 6',
+          'Step 6b',
           'Step 7',
+          'Step 7b',
           'Step 8',
           'Complete'
         ];

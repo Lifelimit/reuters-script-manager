@@ -335,66 +335,292 @@ def find_latest_tracker_file(directory, identifier="tracker"):
                 continue # Ignore files that might be deleted during script run
     return latest_file
 
+def validate_columns(df, required_columns, sheet_name, file_name):
+    """Validate that required columns exist in a dataframe."""
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        colored_print(f"\n[-] Validation Failed: Missing required columns in '{sheet_name}' of '{file_name}':", Fore.RED)
+        colored_print(f"    Missing: {', '.join(missing_columns)}", Fore.RED)
+        colored_print(f"    Available: {', '.join(df.columns.tolist())}", Fore.YELLOW)
+        return False
+    return True
+
+def validate_tracker_columns(df, sheet_name, file_name):
+    """Validate tracker columns with flexible matching for common variations."""
+    available_columns = df.columns.tolist()
+    lowered_columns = [str(col).strip().lower() for col in available_columns]
+    
+    # Check for Issue URL column (flexible matching)
+    issue_url_variants = ['issue url', 'issue_url', 'issueurl']
+    issue_url_found = any(variant in lowered_columns for variant in issue_url_variants)
+    
+    # Check for Ticket column (flexible matching)
+    ticket_variants = ['ticket', 'ticket link', 'ticket_link', 'ticketlink']
+    ticket_found = any(variant in lowered_columns for variant in ticket_variants)
+    
+    missing_concepts = []
+    if not issue_url_found:
+        missing_concepts.append("Issue URL (or similar)")
+    if not ticket_found:
+        missing_concepts.append("Ticket (or Ticket link)")
+    
+    if missing_concepts:
+        colored_print(f"\n[-] Validation Failed: Missing required column concepts in '{sheet_name}' of '{file_name}':", Fore.RED)
+        colored_print(f"    Missing concepts: {', '.join(missing_concepts)}", Fore.RED)
+        colored_print(f"    Available: {', '.join(available_columns)}", Fore.YELLOW)
+        colored_print(f"    Hint: Looking for columns like 'Issue URL'/'ISSUE_URL' and 'Ticket'/'Ticket link'", Fore.CYAN)
+        return False
+    
+    return True
+
+def validate_data_quality(df, sheet_name, file_name):
+    """Validate data quality in a dataframe."""
+    if df.empty:
+        colored_print(f"\n[-] Validation Failed: Sheet '{sheet_name}' in '{file_name}' is empty.", Fore.RED)
+        return False
+    
+    if len(df) < 1:
+        colored_print(f"\n[-] Validation Failed: Sheet '{sheet_name}' in '{file_name}' has no data rows.", Fore.RED)
+        return False
+    
+    # Check for completely empty critical columns
+    critical_columns = ['ISSUE_URL', 'PROJECT_NAME', 'PACKAGE_NAME_AND_VERSION']
+    available_critical = [col for col in critical_columns if col in df.columns]
+    
+    if available_critical:
+        all_empty = True
+        for col in available_critical:
+            if not df[col].isna().all() and not (df[col].astype(str).str.strip() == '').all():
+                all_empty = False
+                break
+        
+        if all_empty:
+            colored_print(f"\n[-] Validation Warning: All critical columns in '{sheet_name}' appear to be empty.", Fore.YELLOW)
+            colored_print(f"    Critical columns checked: {', '.join(available_critical)}", Fore.YELLOW)
+    
+    return True
+
+def validate_data_structure(df, sheet_name, file_name, sheet_type):
+    """Validate data structure and format compatibility."""
+    validation_passed = True
+    
+    # Validate ISSUE_URL format for Snyk reports (lenient check)
+    if sheet_type == 'snyk' and 'ISSUE_URL' in df.columns:
+        issue_urls = df['ISSUE_URL'].dropna()
+        if not issue_urls.empty:
+            # Check for basic URL patterns (more flexible)
+            # Accept various Snyk URL formats and even non-URLs if they look like identifiers
+            url_like_pattern = r'(?:https?://|snyk-|SNYK-|[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+)'
+            valid_urls = issue_urls.astype(str).str.contains(url_like_pattern, case=False, na=False)
+            invalid_count = len(issue_urls) - valid_urls.sum()
+            
+            # Only warn if more than 90% are invalid (very lenient)
+            if invalid_count > len(issue_urls) * 0.9:
+                colored_print(f"\n[-] Validation Info: Some ISSUE_URLs in '{sheet_name}' may not follow standard format.", Fore.CYAN)
+                colored_print(f"    Non-standard format: {invalid_count}/{len(issue_urls)}", Fore.CYAN)
+                colored_print(f"    This is usually fine - continuing with processing.", Fore.CYAN)
+    
+    # Validate severity values
+    if 'ISSUE_SEVERITY' in df.columns:
+        severities = df['ISSUE_SEVERITY'].dropna()
+        if not severities.empty:
+            expected_severities = ['Critical', 'High', 'Medium', 'Low']
+            invalid_severities = severities[~severities.isin(expected_severities)]
+            
+            if len(invalid_severities) > 0:
+                unique_invalid = invalid_severities.unique()
+                colored_print(f"\n[-] Validation Warning: Unexpected severity values in '{sheet_name}'.", Fore.YELLOW)
+                colored_print(f"    Unexpected values: {', '.join(map(str, unique_invalid))}", Fore.YELLOW)
+                colored_print(f"    Expected values: {', '.join(expected_severities)}", Fore.YELLOW)
+    
+    # Validate ticket format for tracker sheets
+    if sheet_type == 'tracker' and 'Ticket' in df.columns:
+        tickets = df['Ticket'].dropna()
+        if not tickets.empty:
+            # Check for common ticket patterns (JIRA, ServiceNow, etc.)
+            ticket_patterns = [
+                r'^[A-Z]+-\d+$',  # JIRA format (ABC-123)
+                r'^INC\d+$',      # ServiceNow incident
+                r'^REQ\d+$',      # ServiceNow request
+                r'^TASK\d+$',     # Task format
+            ]
+            
+            valid_tickets = 0
+            for pattern in ticket_patterns:
+                valid_tickets += tickets.astype(str).str.match(pattern, na=False).sum()
+            
+            if valid_tickets < len(tickets) * 0.3:  # Less than 30% match common patterns
+                colored_print(f"\n[-] Validation Info: Ticket formats in '{sheet_name}' don't match common patterns.", Fore.CYAN)
+                colored_print(f"    This may be normal if using a custom ticketing system.", Fore.CYAN)
+    
+    return validation_passed
+
+def validate_file_integrity(file_path):
+    """Validate file integrity and accessibility."""
+    if not os.path.exists(file_path):
+        colored_print(f"\n[-] Validation Failed: File '{file_path}' does not exist.", Fore.RED)
+        return False
+    
+    if not os.access(file_path, os.R_OK):
+        colored_print(f"\n[-] Validation Failed: File '{file_path}' is not readable.", Fore.RED)
+        return False
+    
+    # Check file size (empty files are suspicious)
+    if os.path.getsize(file_path) < 1024:  # Less than 1KB
+        colored_print(f"\n[-] Validation Warning: File '{file_path}' is very small ({os.path.getsize(file_path)} bytes).", Fore.YELLOW)
+    
+    # Validate Excel file format
+    if not validate_excel_format(file_path):
+        return False
+    
+    return True
+
+def validate_excel_format(file_path):
+    """Validate that the file is a valid Excel workbook."""
+    try:
+        # Check file extension
+        valid_extensions = ['.xlsx', '.xlsm', '.xls']
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext not in valid_extensions:
+            colored_print(f"\n[-] Validation Failed: File '{os.path.basename(file_path)}' has invalid extension '{file_ext}'.", Fore.RED)
+            colored_print(f"    Expected one of: {', '.join(valid_extensions)}", Fore.YELLOW)
+            return False
+        
+        # Try to open as Excel workbook
+        test_book = load_workbook(file_path, read_only=True, data_only=True)
+        
+        # Check if workbook has any sheets
+        if not test_book.sheetnames:
+            colored_print(f"\n[-] Validation Failed: Excel file '{os.path.basename(file_path)}' contains no sheets.", Fore.RED)
+            test_book.close()
+            return False
+        
+        test_book.close()
+        return True
+        
+    except Exception as e:
+        colored_print(f"\n[-] Validation Failed: File '{os.path.basename(file_path)}' is not a valid Excel workbook.", Fore.RED)
+        colored_print(f"    Error: {str(e)}", Fore.RED)
+        return False
+
 def validate_required_sheets(old_file, new_file, tracker_file):
-    """Validate that all required sheets exist before processing.
+    """Validate that all required sheets exist and contain valid data before processing.
     Returns True if all validations pass, False otherwise.
     """
-    print("\n--- Pre-flight Validation: Checking Required Sheets ---")
+    print("\n--- Pre-flight Validation: Comprehensive Checks ---")
     
-    # Check new report file
+    # Define required columns for each sheet type
+    snyk_required_columns = ['ISSUE_URL', 'PROJECT_NAME', 'PACKAGE_NAME_AND_VERSION', 'ISSUE_SEVERITY']
+    # Note: Tracker columns are validated using flexible matching in validate_tracker_columns()
+    
+    validation_passed = True
+    
+    # 1. File integrity checks
+    safe_print("  Checking file integrity...")
+    for file_path, file_type in [(new_file, "new report"), (old_file, "old report"), (tracker_file, "tracker")]:
+        if file_path and not validate_file_integrity(file_path):
+            validation_passed = False
+    
+    # 2. Check new report file
+    safe_print("  Validating new report file...")
     try:
         book_new = load_workbook(new_file, read_only=True, data_only=True)
         new_sheet_name = find_sheet_name(book_new, REPO_SHEET_NAME)
         available_sheets_new = book_new.sheetnames
-        book_new.close()
+        
         if not new_sheet_name:
             colored_print(f"\n[-] Validation Failed: Required sheet '{REPO_SHEET_NAME}' not found in new report '{os.path.basename(new_file)}'.", Fore.RED)
             colored_print(f"    Available sheets: {', '.join(available_sheets_new)}", Fore.YELLOW)
-            return False
+            validation_passed = False
         else:
-            safe_print(f"  ✓ New report sheet '{REPO_SHEET_NAME}' found")
+            safe_print(f"    ✓ Sheet '{REPO_SHEET_NAME}' found")
+            
+            # Load and validate data
+            df_new = pd.read_excel(new_file, sheet_name=new_sheet_name)
+            if not validate_columns(df_new, snyk_required_columns, new_sheet_name, os.path.basename(new_file)):
+                validation_passed = False
+            elif not validate_data_quality(df_new, new_sheet_name, os.path.basename(new_file)):
+                validation_passed = False
+            elif not validate_data_structure(df_new, new_sheet_name, os.path.basename(new_file), 'snyk'):
+                validation_passed = False
+            else:
+                safe_print(f"    ✓ Data validation passed ({len(df_new)} rows)")
+        
+        book_new.close()
     except Exception as e:
         colored_print(f"\n[-] Validation Failed: Could not read new report file '{os.path.basename(new_file)}'. Error: {e}", Fore.RED)
-        return False
+        validation_passed = False
     
-    # Check old report file (if provided)
+    # 3. Check old report file (if provided)
     if old_file:
+        safe_print("  Validating old report file...")
         try:
             book_old = load_workbook(old_file, read_only=True, data_only=True)
             old_sheet_name = find_sheet_name(book_old, REPO_SHEET_NAME)
             available_sheets_old = book_old.sheetnames
-            book_old.close()
+            
             if not old_sheet_name:
                 colored_print(f"\n[-] Validation Failed: Required sheet '{REPO_SHEET_NAME}' not found in old report '{os.path.basename(old_file)}'.", Fore.RED)
                 colored_print(f"    Available sheets: {', '.join(available_sheets_old)}", Fore.YELLOW)
-                return False
+                validation_passed = False
             else:
-                safe_print(f"  ✓ Old report sheet '{REPO_SHEET_NAME}' found")
+                safe_print(f"    ✓ Sheet '{REPO_SHEET_NAME}' found")
+                
+                # Load and validate data
+                df_old = pd.read_excel(old_file, sheet_name=old_sheet_name)
+                if not validate_columns(df_old, snyk_required_columns, old_sheet_name, os.path.basename(old_file)):
+                    validation_passed = False
+                elif not validate_data_quality(df_old, old_sheet_name, os.path.basename(old_file)):
+                    validation_passed = False
+                elif not validate_data_structure(df_old, old_sheet_name, os.path.basename(old_file), 'snyk'):
+                    validation_passed = False
+                else:
+                    safe_print(f"    ✓ Data validation passed ({len(df_old)} rows)")
+            
+            book_old.close()
         except Exception as e:
             colored_print(f"\n[-] Validation Failed: Could not read old report file '{os.path.basename(old_file)}'. Error: {e}", Fore.RED)
-            return False
+            validation_passed = False
     
-    # Check tracker file (if provided)
+    # 4. Check tracker file (if provided)
     if tracker_file:
+        safe_print("  Validating tracker file...")
         try:
             book_tracker = load_workbook(tracker_file, read_only=True, data_only=True)
             tracker_sheet_name = find_sheet_name(book_tracker, TRACKER_DATA_SHEET_NAME) or \
                                  find_sheet_name(book_tracker, TRACKER_SHEET_NAME)
             available_sheets = book_tracker.sheetnames
-            book_tracker.close()
             
             if not tracker_sheet_name:
                 colored_print(f"\n[-] Validation Failed: Required tracker sheet '{TRACKER_DATA_SHEET_NAME}' or '{TRACKER_SHEET_NAME}' not found in tracker file '{os.path.basename(tracker_file)}'.", Fore.RED)
                 colored_print(f"    Available sheets: {', '.join(available_sheets)}", Fore.YELLOW)
-                return False
+                validation_passed = False
             else:
-                safe_print(f"  ✓ Tracker sheet '{tracker_sheet_name}' found")
+                safe_print(f"    ✓ Sheet '{tracker_sheet_name}' found")
+                
+                # Load and validate data
+                df_tracker = pd.read_excel(tracker_file, sheet_name=tracker_sheet_name)
+                if not validate_tracker_columns(df_tracker, tracker_sheet_name, os.path.basename(tracker_file)):
+                    validation_passed = False
+                elif not validate_data_quality(df_tracker, tracker_sheet_name, os.path.basename(tracker_file)):
+                    validation_passed = False
+                elif not validate_data_structure(df_tracker, tracker_sheet_name, os.path.basename(tracker_file), 'tracker'):
+                    validation_passed = False
+                else:
+                    safe_print(f"    ✓ Data validation passed ({len(df_tracker)} rows)")
+            
+            book_tracker.close()
         except Exception as e:
             colored_print(f"\n[-] Validation Failed: Could not read tracker file '{os.path.basename(tracker_file)}'. Error: {e}", Fore.RED)
-            return False
+            validation_passed = False
     
-    colored_print("  ✓ All required sheets validated successfully!", Fore.GREEN)
-    return True
+    # 5. Final validation summary
+    if validation_passed:
+        colored_print("  ✓ All validation checks passed successfully!", Fore.GREEN)
+    else:
+        colored_print("\n[-] Pre-flight validation failed. Please fix the issues above before proceeding.", Fore.RED)
+    
+    return validation_passed
 
 def process_reports(old_file, new_file, tracker_file):
     """Main logic to compare reports, process data, and write the output file."""
@@ -516,8 +742,10 @@ def process_reports(old_file, new_file, tracker_file):
         
         # Prepare default empty ticket series aligned to new items
         ticket_data = pd.Series([''] * len(new_items_df), index=new_items_df.index)
+        
+        print("\n--- Step 4b: Cross-referencing with Vulnerability Tracker ---")
         if tracker_file:
-            print("  - Cross-referencing with Vulnerability Tracker file...")
+            print("  - Processing Vulnerability Tracker file...")
             try:
                 # Identify tracker sheet (prefer 'Tickets', fall back to 'Vulnerability Tracker')
                 book_tracker = load_workbook(tracker_file, data_only=False)
@@ -661,6 +889,11 @@ def process_reports(old_file, new_file, tracker_file):
                             cell.value = display_text
                             cell.hyperlink = url
                             cell.font = hyperlink_font
+        
+        if tracker_file:
+            print("  - Success: Vulnerability tracker cross-referencing completed.")
+        else:
+            print("  - No tracker file provided, skipping cross-referencing.")
 
         print("\n--- Step 5: Creating 'Working sheet' ---")
         book = load_workbook(original_renamed_path, data_only=False)
@@ -1069,6 +1302,7 @@ def process_reports(old_file, new_file, tracker_file):
                 tracker_sheet.append(r)
             print("  - Populated tracker with data.")
             
+            print("\n--- Step 6b: Formatting Vulnerability Tracker Sheet ---")
             bold_font = Font(bold=True)
             for cell in tracker_sheet[1]:
                 cell.font = bold_font
@@ -1116,7 +1350,8 @@ def process_reports(old_file, new_file, tracker_file):
             # Apply hyperlink formatting to Vulnerability Tracker sheet
             apply_hyperlink_formatting(tracker_sheet, tracker_df, 'Ticket link', 'Issue URL')
             
-            print("  - Formatted tracker sheet.")
+            print("  - Applied hyperlink formatting and column adjustments.")
+            print("  - Success: Vulnerability Tracker sheet formatting completed.")
             print(f"  - Success: '{TRACKER_SHEET_NAME}' created.")
             # Compute the subset of tracker rows that still need tickets
             try:
