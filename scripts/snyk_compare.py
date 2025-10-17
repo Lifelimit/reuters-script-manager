@@ -625,11 +625,8 @@ def process_reports(old_file, new_file, tracker_file):
         manual_sheet = book.copy_worksheet(source_sheet)
         manual_sheet.title = WORKING_SHEET_MANUAL_NAME
         manual_sheet.sheet_properties.tabColor = "FFFF00"  # Yellow color
-        manual_sheet.delete_rows(2, manual_sheet.max_row + 1)
-        manual_sheet.insert_cols(ticket_col_pos + 1)
-        manual_sheet.cell(row=1, column=ticket_col_pos + 1).value = 'Ticket'
-        # Ensure header exists for the adjacent 'Needs Action' column we add in DataFrame
-        manual_sheet.cell(row=1, column=ticket_col_pos + 2).value = 'Needs Action'
+        # Clear all data rows and header to write fresh DataFrame structure
+        manual_sheet.delete_rows(1, manual_sheet.max_row + 1)
 
         # Manual sheet uses df_new (full data), preserving existing STATUS and Business criticality.
         # Ticket column is populated per rules: ADO ticket if exists; else 'New' for new lines;
@@ -776,7 +773,7 @@ def process_reports(old_file, new_file, tracker_file):
         for col in manual_display_df.columns:
             manual_display_df[col] = manual_display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
 
-        for r in dataframe_to_rows(manual_display_df, index=False, header=False):
+        for r in dataframe_to_rows(manual_display_df, index=False, header=True):
             manual_sheet.append(r)
         manual_sheet.auto_filter.ref = manual_sheet.dimensions
 
