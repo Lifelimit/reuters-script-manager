@@ -568,8 +568,7 @@ def process_reports(old_file, new_file, tracker_file):
         
         display_df = filtered_df.copy()
         for col in display_df.columns:
-            if col != 'Ticket':  # Don't process the Ticket column
-                display_df[col] = display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
+            display_df[col] = display_df[col].apply(lambda x: x[0] if isinstance(x, tuple) and len(x) == 2 else x)
         
         # Create new worksheet and write the filtered data with proper headers
         target_sheet = book.create_sheet(title=WORKING_SHEET_NAME)
@@ -656,7 +655,9 @@ def process_reports(old_file, new_file, tracker_file):
         # Manual sheet uses df_new (full data), preserving existing STATUS and Business criticality.
         # Ticket column is populated per rules: ADO ticket if exists; else 'New' for new lines;
         # 'Ignore-Docker' for new docker-image lines; otherwise 'Existing'.
+        # Use ALL original columns from the Snyk report, only adding new columns (Ticket, Needs Action)
         manual_df = df_new.copy()
+        print(f"  - Using all {len(df_new.columns)} original columns for manual sheet")
         # Ensure Ticket column exists without altering filters
         if 'Ticket' not in manual_df.columns:
             # Baseline new vs existing using old_urls computed earlier
@@ -816,6 +817,13 @@ def process_reports(old_file, new_file, tracker_file):
 
         # Apply hyperlink formatting to the manual sheet
         apply_hyperlink_formatting(manual_sheet, manual_df)
+
+        # Ensure NAME column is always visible in the manual sheet
+        if 'NAME' in manual_display_df.columns:
+            name_col_idx = manual_display_df.columns.get_loc('NAME') + 1
+            name_col_letter = get_column_letter(name_col_idx)
+            manual_sheet.column_dimensions[name_col_letter].hidden = False
+            print("  - Ensured NAME column is visible in manual sheet.")
 
         print("  - Success: 'Working sheet - Manual' created and formatted.")
 
