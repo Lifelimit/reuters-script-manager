@@ -78,6 +78,19 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
     return status === 'error' ? 'bg-red-500' : status === 'warn' ? 'bg-yellow-400' : 'bg-app-success';
   };
 
+  // Dynamic header based on selected script
+  const panelTitle = useMemo(() => {
+    const pathLower = (metadata?.paths?.script || '').toLowerCase();
+    const nameLower = (metadata?.script_name || '').toLowerCase();
+    if (pathLower.includes('datadome') || nameLower.includes('datadome')) return 'DataDome Compare';
+    if (pathLower.includes('snyk') || nameLower.includes('snyk')) return 'Snyk Report Compare';
+    if (metadata?.script_name) {
+      const s = metadata.script_name.replace(/_/g, ' ');
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    return 'Script Details';
+  }, [metadata]);
+
   // Local state for reveal button enablement and errors
   const workingDir = metadata?.paths?.working_dir || '';
   const [canReveal, setCanReveal] = useState<boolean>(false);
@@ -125,7 +138,7 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
   return (
     <div className="p-4 h-full overflow-y-auto">
       <div className="mb-4">
-        <h2 className="text-lg font-medium text-app-text mb-4">Snyk Report Compare</h2>
+        <h2 className="text-lg font-medium text-app-text mb-4">{panelTitle}</h2>
         {/* Script Information */}
         <div className="space-y-3 mb-4">
           {/* Script Info */}
@@ -261,8 +274,8 @@ const ScriptDetailsPanel: React.FC<ScriptDetailsPanelProps> = ({ metadata, deps,
         {/* Required Files Section */}
         <div className="mt-4">
           <div className="text-sm font-medium text-app-text mb-2">Required Files:</div>
-          {/* If manual mode is enabled and some files are missing, disable automatic file checker display */}
-          {(manualMode && missingFilesSet.size > 0) ? (
+          {/* Manual Mode: always disable automatic file checker display in side panel */}
+          {(manualMode) ? (
             <div className="px-3 py-2 rounded bg-app-darker border border-app-border text-xs text-app-text-secondary" title="Manual Mode enabled">
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-app-muted mr-2" viewBox="0 0 20 20" fill="currentColor">
