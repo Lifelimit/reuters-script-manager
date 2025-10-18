@@ -89,10 +89,14 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
 
   const requirementsMet = allRequirementsMet();
 
-  // Manual mode gating: require selections for each required file name
+  // Manual mode gating: allow run if files present OR selected
   const manualSelectionsComplete = manualMode
     ? (requiredFileNames && requiredFileNames.length > 0
-        ? requiredFileNames.every((n) => manualFiles && !!manualFiles[n])
+        ? requiredFileNames.every((n) => {
+            const selected = manualFiles && !!manualFiles[n];
+            const present = !!(requiredFilesStatus || []).find((f) => f.name === n && f.exists);
+            return selected || present;
+          })
         : true)
     : true;
 

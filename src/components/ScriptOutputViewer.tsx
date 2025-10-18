@@ -56,11 +56,14 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
           const isBullet = /^[\s\t]*[-•]/.test(trimmed) || /^[\s\t]*✓/.test(trimmed);
           // Any bullet under a "Missing files:" section should be red (applies to Check Requirements and analyzer output)
           const isMissingBullet = inMissingSection && isBullet && !/^✓/.test(trimmed);
+          // Explicit real-time update lines from file watcher
+          const isRealTimePresent = /^Now\s+present:/i.test(trimmed);
+          const isRealTimeMissing = /^Now\s+missing:/i.test(trimmed);
 
           let className = '';
-          if (isStderr || isError || isMissing || isMissingBullet) className = 'text-red-400';
+          if (isStderr || isError || isMissing || isMissingBullet || isRealTimeMissing) className = 'text-red-400';
           else if (isWarning) className = 'text-yellow-300';
-          else if (isSuccess) className = 'text-green-400';
+          else if (isSuccess || isRealTimePresent) className = 'text-green-400';
           else if (isStep) className = 'text-cyan-300';
           return (
             <div key={idx} className={className}>

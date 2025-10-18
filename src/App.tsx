@@ -70,6 +70,8 @@ function App() {
   const [manualFiles, setManualFiles] = useState<Record<string, string>>({});
   const [runProgress, setRunProgress] = useState<number>(0);
   const [runProgressLabel, setRunProgressLabel] = useState<string | null>(null);
+  // Track previous file existence to emit real-time changes to output
+  const lastFileExistMapRef = useRef<Map<string, boolean> | null>(null);
   // Handler to open documentation modal
   const handleOpenDoc = async (doc: 'readme' | 'guide') => {
     let file = '';
@@ -239,6 +241,8 @@ function App() {
         }
         // reset last file check summary when directory changes
         lastFileCheckSummaryRef.current = null;
+        // reset last known file existence map for real-time diff logging
+        lastFileExistMapRef.current = null;
         watchDirRef.current = wd;
         try {
           await invoke<string>('start_file_watch', { dir: wd, dirPath: wd, directory: wd, args: { dir: wd } });
@@ -529,18 +533,23 @@ function App() {
         ? rawStatuses.map((st, idx) => ({ name: analyzedFiles[idx]?.name || st.name.split('/').pop() || st.name, exists: st.exists }))
         : rawStatuses.map(st => ({ name: st.name, exists: st.exists }));
       setRequiredFilesStatus(files);
-      const missing = files.filter(f => !f.exists);
-      // Build a stable summary and only log on change to prevent spam
-      const summary = missing.length
-        ? `Missing files: ${missing.map(m => m.name).sort((a,b)=>a.localeCompare(b)).join(', ')}`
-        : 'All required files found.';
-      if (logPrefix && logPrefix !== undefined && lastFileCheckSummaryRef.current !== summary) {
-        setOutput((p) => p + `${logPrefix}${summary}\n`);
-        lastFileCheckSummaryRef.current = summary;
-      } else if (logPrefix === undefined) {
-        // Don't log or update lastFileCheckSummaryRef when called from manual check
-      } else if (!logPrefix) {
-        lastFileCheckSummaryRef.current = summary;
+      // If requested, log a summary to the output with a prefix
+      if (logPrefix) {
+        const missingFiles = files.filter(f => !f.exists);
+        const presentFiles = files.filter(f => f.exists);
+        let summary = '';
+        if (missingFiles.length > 0) {
+          summary += `${logPrefix}Missing files:\n${missingFiles.map(f => `  - ${f.name}`).join('\n')}\n`;
+        } else {
+          summary += `${logPrefix}All required files found.\n`;
+        }
+        if (presentFiles.length > 0) {
+          summary += `${logPrefix}Present files:\n${presentFiles.map(f => `  ✓ ${f.name}`).join('\n')}\n`;
+        }
+        if (summary !== lastFileCheckSummaryRef.current) {
+          setOutput((p) => p + summary + '\n');
+          lastFileCheckSummaryRef.current = summary;
+        }
       }
       return files;
     } catch (err: any) {
@@ -607,6 +616,27 @@ function App() {
         ? rawStatuses.map((st, idx) => ({ name: analyzedFiles[idx]?.name || st.name.split('/').pop() || st.name, exists: st.exists }))
         : rawStatuses.map(st => ({ name: st.name, exists: st.exists }));
       setRequiredFilesStatus(files);
+      // Real-time: log changes since last known status
+      try {
+        const prevMap = lastFileExistMapRef.current;
+        const nextMap = new Map<string, boolean>();
+        files.forEach(f => nextMap.set(f.name, !!f.exists));
+        if (prevMap) {
+          const changes: { name: string; nowExists: boolean }[] = [];
+          files.forEach(f => {
+            const prev = prevMap.get(f.name);
+            if (typeof prev === 'boolean' && prev !== !!f.exists) {
+              changes.push({ name: f.name, nowExists: !!f.exists });
+            }
+          });
+          if (changes.length > 0) {
+            const lines = changes.map(c => c.nowExists ? `Now present: ✓ ${c.name}` : `Now missing: ✗ ${c.name}`);
+            setOutput(p => p + lines.join('\n') + '\n');
+          }
+        }
+        // If no baseline exists yet (e.g., first silent check), just set it without logging
+        lastFileExistMapRef.current = nextMap;
+      } catch { /* ignore diff errors */ }
       return files;
     } catch (err: any) {
       // Silent failure - no output logging
@@ -698,6 +728,10 @@ function App() {
       if (files.length > 0) {
         setOutput(prev => prev + `\n`);
       }
+      // Initialize baseline exist map for subsequent real-time diff
+      try {
+        lastFileExistMapRef.current = new Map(files.map(f => [f.name, !!f.exists]));
+      } catch {}
 
       return files;
     } catch (err: any) {
