@@ -114,6 +114,13 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
     return Array.from(new Set(names));
   }, [requiredFileNames]);
 
+  // Map existence by friendly file name for quick lookup in Manual Mode
+  const existsByName = useMemo(() => {
+    const map = new Map<string, boolean>();
+    (requiredFilesStatus || []).forEach((f) => map.set(f.name, f.exists));
+    return map;
+  }, [requiredFilesStatus]);
+
   return (
     <div className="topbar">
       {/* Status Banners (running banner removed; success banner replaced with compact indicator) */}
@@ -281,11 +288,15 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
           <div className="space-y-2">
             {uniqueRequiredFileNames.map((name, idx) => {
               const selected = manualFiles && manualFiles[name];
+              const hasExistInfo = existsByName.has(name);
+              const exists = existsByName.get(name) === true;
+              const nameClass = hasExistInfo ? (exists ? 'text-green-300' : 'text-red-400') : 'text-app-text';
+              const labelText = hasExistInfo ? (exists ? 'Present:' : 'Required:') : 'Required:';
               return (
                 <div key={`${name}-${idx}`} className="flex items-center justify-between bg-app-darker p-2 rounded-md border border-app-border">
                   <div className="flex-1">
-                    <div className="text-xs text-app-muted">Required:</div>
-                    <div className="text-sm text-app-text truncate" title={name}>{name}</div>
+                    <div className="text-xs text-app-muted">{labelText}</div>
+                    <div className={`text-sm truncate ${nameClass}`} title={name}>{name}</div>
                     {selected && (
                       <div className="text-xs text-green-300 truncate" title={selected}>Selected: {selected}</div>
                     )}
