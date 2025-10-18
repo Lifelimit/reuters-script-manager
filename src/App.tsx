@@ -418,8 +418,14 @@ function App() {
           venv_message: 'Virtual environment ready',
         });
       } else {
-        await invoke<string>('setup_python_env');
-        const statusesJson = await invoke<string>('check_python_deps');
+        await invoke<string>('setup_python_env', {
+          script_path: selectedScript,
+          scriptPath: selectedScript
+        });
+        const statusesJson = await invoke<string>('check_python_deps', {
+          script_path: selectedScript,
+          scriptPath: selectedScript
+        });
         const statuses: DepStatus[] = JSON.parse(statusesJson);
         setDeps(statuses);
         const missingCount = statuses.filter(s => !s.installed).length;
@@ -687,7 +693,10 @@ function App() {
           { name: 'colorama', installed: true, version: '0.4.6' },
         ];
       } else {
-        const statusesJson = await invoke<string>('check_python_deps');
+        const statusesJson = await invoke<string>('check_python_deps', {
+          script_path: selectedScript,
+          scriptPath: selectedScript
+        });
         statuses = JSON.parse(statusesJson);
       }
       setDeps(statuses);

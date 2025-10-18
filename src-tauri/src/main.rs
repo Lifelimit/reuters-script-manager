@@ -313,6 +313,83 @@ fn parse_requirements(contents: &str) -> Vec<String> {
     pkgs
 }
 
+// Parse Python imports from script file to determine required dependencies
+fn parse_python_imports(script_path: &Path) -> Vec<String> {
+    let mut dependencies = Vec::new();
+    
+    if let Ok(contents) = fs::read_to_string(script_path) {
+        let import_regex = Regex::new(r"^(?:from\s+(\w+)|import\s+(\w+))").unwrap();
+        
+        for line in contents.lines() {
+            let line = line.trim();
+            if let Some(captures) = import_regex.captures(line) {
+                let module = captures.get(1).or_else(|| captures.get(2))
+                    .map(|m| m.as_str().to_string());
+                
+                if let Some(module_name) = module {
+                    // Map common modules to their pip package names
+                    let package_name = match module_name.as_str() {
+                        "pandas" => Some("pandas"),
+                        "openpyxl" => Some("openpyxl"),
+                        "colorama" => Some("colorama"),
+                        "tkinter" => None, // Built-in module, skip
+                        "os" | "sys" | "re" | "datetime" | "warnings" | "shutil" => None, // Built-in modules
+                        _ => None, // Unknown or built-in modules
+                    };
+                    
+                    if let Some(pkg) = package_name {
+                        if !dependencies.contains(&pkg.to_string()) {
+                            dependencies.push(pkg.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // If no dependencies found, fall back to default set
+    if dependencies.is_empty() {
+        dependencies = vec!["pandas".to_string(), "openpyxl".to_string(), "colorama".to_string()];
+    }
+    
+    dependencies
+}
+
+// Get dependency requirements with version constraints from requirements.txt
+fn get_dependency_requirements(app_handle: &AppHandle, dependencies: &[String]) -> Vec<(String, String)> {
+    let mut dep_requirements = Vec::new();
+    
+    // Read requirements.txt to get version constraints
+    if let Some(requirements) = read_requirements(app_handle) {
+        let requirements_map: std::collections::HashMap<String, String> = requirements
+            .iter()
+            .filter_map(|req| {
+                if let Some(pos) = req.find(">=") {
+                    let name = req[..pos].trim().to_string();
+                    let version = req[pos..].trim().to_string();
+                    Some((name, version))
+                } else {
+                    Some((req.clone(), "".to_string()))
+                }
+            })
+            .collect();
+        
+        for dep in dependencies {
+            let requirement = requirements_map.get(dep)
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
+            dep_requirements.push((dep.clone(), requirement));
+        }
+    } else {
+        // Fallback to dependencies without version constraints
+        for dep in dependencies {
+            dep_requirements.push((dep.clone(), "".to_string()));
+        }
+    }
+    
+    dep_requirements
+}
+
 fn read_requirements(app_handle: &AppHandle) -> Option<Vec<String>> {
     // Prefer workspace file first
     let workspace_path = PathBuf::from("Documents").join("Main").join("requirements.txt");
@@ -735,9 +812,31 @@ async fn analyze_required_files(
 }
 
 // Command to create venv (if absent) and install packages
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn setup_python_env(app_handle: AppHandle, packages: Option<Vec<String>>) -> Result<String, String> {
-    let pkgs = packages.or_else(|| read_requirements(&app_handle)).unwrap_or_else(default_packages);
+async fn setup_python_env(
+    app_handle: AppHandle, 
+    packages: Option<Vec<String>>,
+    script_path: Option<String>,
+    scriptPath: Option<String>
+) -> Result<String, String> {
+    let script = script_path.or(scriptPath);
+    
+    let pkgs = if let Some(provided_packages) = packages {
+        provided_packages
+    } else if let Some(script_path_str) = script {
+        // Use script-specific dependencies
+        let (abs_script_path, _) = resolve_script_absolute_path(&app_handle, &script_path_str);
+        let script_dependencies = parse_python_imports(&abs_script_path);
+        let dependency_requirements = get_dependency_requirements(&app_handle, &script_dependencies);
+        
+        // Extract just the package names for installation
+        dependency_requirements.into_iter().map(|(name, _)| name).collect()
+    } else {
+        // Fallback to requirements.txt or default packages
+        read_requirements(&app_handle).unwrap_or_else(default_packages)
+    };
+    
     let venv = ensure_venv()?;
     let summary = install_packages(&venv, &pkgs)?;
     Ok(serde_json::json!({
@@ -748,9 +847,31 @@ async fn setup_python_env(app_handle: AppHandle, packages: Option<Vec<String>>) 
 }
 
 // Command to check package installation status in the venv
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn check_python_deps(app_handle: AppHandle, packages: Option<Vec<String>>) -> Result<String, String> {
-    let pkgs = packages.or_else(|| read_requirements(&app_handle)).unwrap_or_else(default_packages);
+async fn check_python_deps(
+    app_handle: AppHandle, 
+    packages: Option<Vec<String>>,
+    script_path: Option<String>,
+    scriptPath: Option<String>
+) -> Result<String, String> {
+    let script = script_path.or(scriptPath);
+    
+    let pkgs = if let Some(provided_packages) = packages {
+        provided_packages
+    } else if let Some(script_path_str) = script {
+        // Use script-specific dependencies
+        let (abs_script_path, _) = resolve_script_absolute_path(&app_handle, &script_path_str);
+        let script_dependencies = parse_python_imports(&abs_script_path);
+        let dependency_requirements = get_dependency_requirements(&app_handle, &script_dependencies);
+        
+        // Extract just the package names for checking
+        dependency_requirements.into_iter().map(|(name, _)| name).collect()
+    } else {
+        // Fallback to requirements.txt or default packages
+        read_requirements(&app_handle).unwrap_or_else(default_packages)
+    };
+    
     let venv = ensure_venv()?; // ensure path and python exist
     let statuses = check_packages(&venv, &pkgs)?;
     Ok(serde_json::to_string(&statuses).map_err(|e| e.to_string())?)
@@ -1112,7 +1233,23 @@ async fn read_script_metadata(
         vec!["README.md", "Snyk_Compare_Script_User_Guide.md"]
     };
 
-    // Return dummy metadata structured like the left panel in the screenshot
+    // Parse script-specific dependencies
+    let script_dependencies = parse_python_imports(&abs_script_path);
+    let dependency_requirements = get_dependency_requirements(&app_handle, &script_dependencies);
+    
+    // Format dependencies with version requirements
+    let formatted_deps: Vec<String> = dependency_requirements
+        .into_iter()
+        .map(|(name, version)| {
+            if version.is_empty() {
+                name
+            } else {
+                format!("{}{}", name, version)
+            }
+        })
+        .collect();
+
+    // Return metadata structured like the left panel in the screenshot
     let metadata = json!({
         "script_name": script_name,
         "file_status": "Script file exists",
@@ -1121,11 +1258,7 @@ async fn read_script_metadata(
             "working_dir": working_dir.to_string_lossy().to_string()
         },
         "documentation": docs,
-        "dependencies": [
-            "pandas",
-            "openpyxl", 
-            "colorama"
-        ],
+        "dependencies": formatted_deps,
         // Leave required_files empty; it will be populated by analyzer
         "required_files": []
     });
