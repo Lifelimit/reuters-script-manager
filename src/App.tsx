@@ -57,6 +57,7 @@ function App() {
   const watchDirRef = useRef<string | undefined>(undefined);
   const debounceTimer = useRef<number | null>(null);
   const didInitialSelect = useRef(false);
+  const didInitialFileCheck = useRef(false);
   const lastFileCheckSummaryRef = useRef<string | null>(null);
   const scriptStdoutSubRef = useRef<null | (() => void)>(null);
   const scriptExitSubRef = useRef<null | (() => void)>(null);
@@ -131,6 +132,7 @@ function App() {
           setOutput((p) => p + 'Checking dependencies...\n');
           setDeps(simulatedDeps);
           setOutput((p) => p + 'All dependencies installed.\n');
+          setOutput((p) => p + '─'.repeat(50) + '\n');
           setEnvStatus({
             python_env_status: 'ok',
             python_env_message: 'Python environment ready',
@@ -147,6 +149,7 @@ function App() {
           const missingCount = statuses.filter(s => !s.installed).length;
           const okAll = missingCount === 0;
           setOutput((p) => p + (okAll ? 'All dependencies installed.\n' : 'Some dependencies are missing.\n'));
+          setOutput((p) => p + '─'.repeat(50) + '\n');
           setEnvStatus({
             python_env_status: 'ok',
             python_env_message: 'Python environment ready',
@@ -263,8 +266,14 @@ function App() {
     if (!depsChecked || !selectedScript || !scriptMetadata) return;
     const wd = scriptMetadata?.paths?.working_dir as string | undefined;
     (async () => {
-      // Use silent file check to avoid spamming output on startup
-      await silentFileCheck(selectedScript, wd);
+      if (!didInitialFileCheck.current) {
+        // On initial startup, show missing files in output window
+        didInitialFileCheck.current = true;
+        await startupFileCheck(selectedScript, wd);
+      } else {
+        // For subsequent checks, use silent file check to avoid spamming output
+        await silentFileCheck(selectedScript, wd);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depsChecked, selectedScript, scriptMetadata]);
@@ -582,6 +591,94 @@ function App() {
       return files;
     } catch (err: any) {
       // Silent failure - no output logging
+      return null;
+    }
+  };
+
+  // File check for startup - displays missing files in output window
+  const startupFileCheck = async (
+    scriptPath: string,
+    workingDir?: string
+  ): Promise<{ name: string; exists: boolean }[] | null> => {
+    try {
+      if (isBrowserPreview) {
+        const isSnyk = scriptPath.toLowerCase().includes('snyk');
+        const files = isSnyk
+          ? [
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Report CAT YYYY-MM-DD.xlsx', exists: true },
+              { name: 'Snyk Vulnerability tracker.xlsx', exists: true },
+            ]
+          : [
+              { name: 'DataDome Bots - Block or Whitelist.xlsx', exists: true },
+              { name: 'DataDome_Export_AI_agents_YYYY-MM-DD.xlsx', exists: true },
+              { name: 'DataDome_Export_verified_bots_YYYY-MM-DD.xlsx', exists: true },
+            ];
+        setRequiredFilesStatus(files);
+        
+        // In browser preview, show mock missing files for demonstration
+        const missingFiles = files.filter(f => !f.exists);
+        if (missingFiles.length > 0) {
+          setOutput(prev => prev + `Missing files:\n${missingFiles.map(f => `  - ${f.name}`).join('\n')}\n\n`);
+        } else {
+          setOutput(prev => prev + `All required files are present.\n\n`);
+        }
+        return files;
+      }
+
+      let analyzedFiles: { name: string; path: string }[] = [];
+      try {
+        const analyzedJson = await invoke<string>('analyze_required_files', {
+          script_path: scriptPath,
+          scriptPath: scriptPath,
+          working_dir: workingDir,
+          workingDir: workingDir,
+          args: { script_path: scriptPath, scriptPath, working_dir: workingDir, workingDir: workingDir }
+        });
+        analyzedFiles = JSON.parse(analyzedJson);
+        if (analyzedFiles.length) {
+          setScriptMetadata((prev) => prev ? { ...prev, required_files: analyzedFiles.map(f => f.name) } : prev);
+        }
+      } catch (_e) {
+        // Ignore analyzer failure and fall back to metadata
+      }
+
+      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.name) : (scriptMetadata?.required_files || []));
+      if (!reqFiles.length) {
+        setRequiredFilesStatus(null);
+        setOutput(prev => prev + `No required files to check.\n\n`);
+        return null;
+      }
+
+      const baseDir = workingDir || scriptMetadata?.paths?.working_dir || undefined;
+      const filesJson = await invoke<string>('check_required_files', {
+        base_dir: baseDir,
+        baseDir: baseDir,
+        files: reqFiles,
+        args: { base_dir: baseDir, baseDir: baseDir, files: reqFiles }
+      });
+      const files: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      setRequiredFilesStatus(files);
+
+      // Display file status in output window
+      const missingFiles = files.filter(f => !f.exists);
+      const presentFiles = files.filter(f => f.exists);
+
+      if (missingFiles.length > 0) {
+        setOutput(prev => prev + `Missing files:\n${missingFiles.map(f => `  - ${f.name}`).join('\n')}\n`);
+      }
+      
+      if (presentFiles.length > 0) {
+        setOutput(prev => prev + `Present files:\n${presentFiles.map(f => `  ✓ ${f.name}`).join('\n')}\n`);
+      }
+
+      if (files.length > 0) {
+        setOutput(prev => prev + `\n`);
+      }
+
+      return files;
+    } catch (err: any) {
+      setOutput(prev => prev + `File check failed: ${String(err)}\n\n`);
       return null;
     }
   };
