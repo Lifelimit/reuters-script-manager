@@ -59,6 +59,7 @@ function App() {
   const didInitialSelect = useRef(false);
   const didInitialFileCheck = useRef(false);
   const lastFileCheckSummaryRef = useRef<string | null>(null);
+  const lastSelectedScriptRef = useRef<string | null>(null);
   const scriptStdoutSubRef = useRef<null | (() => void)>(null);
   const scriptExitSubRef = useRef<null | (() => void)>(null);
   // Run status and manual mode
@@ -266,12 +267,12 @@ function App() {
     if (!depsChecked || !selectedScript || !scriptMetadata) return;
     const wd = scriptMetadata?.paths?.working_dir as string | undefined;
     (async () => {
-      if (!didInitialFileCheck.current) {
-        // On initial startup, show missing files in output window
-        didInitialFileCheck.current = true;
+      const isNewSelection = lastSelectedScriptRef.current !== selectedScript;
+      lastSelectedScriptRef.current = selectedScript;
+      if (isNewSelection) {
+        setOutput((p) => p + `Analyzing required files for ${selectedLabel}...\n`);
         await startupFileCheck(selectedScript, wd);
       } else {
-        // For subsequent checks, use silent file check to avoid spamming output
         await silentFileCheck(selectedScript, wd);
       }
     })();
@@ -501,7 +502,8 @@ function App() {
         // Ignore analyzer failure and fall back to metadata
       }
 
-      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.name) : (scriptMetadata?.required_files || []));
+      // Prefer analyzer paths for existence checks to avoid directory resolution issues
+      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.path) : (scriptMetadata?.required_files || []));
       if (!reqFiles.length) {
         setRequiredFilesStatus(null);
         return null;
@@ -513,7 +515,11 @@ function App() {
         files: reqFiles,
         args: { base_dir: baseDir, baseDir: baseDir, files: reqFiles }
       });
-      const files: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      const rawStatuses: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      // Map back to friendly names when analyzer data is available
+      const files: { name: string; exists: boolean }[] = analyzedFiles.length
+        ? rawStatuses.map((st, idx) => ({ name: analyzedFiles[idx]?.name || st.name.split('/').pop() || st.name, exists: st.exists }))
+        : rawStatuses.map(st => ({ name: st.name, exists: st.exists }));
       setRequiredFilesStatus(files);
       const missing = files.filter(f => !f.exists);
       // Build a stable summary and only log on change to prevent spam
@@ -574,7 +580,8 @@ function App() {
         // Ignore analyzer failure and fall back to metadata
       }
 
-      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.name) : (scriptMetadata?.required_files || []));
+      // Prefer analyzer paths for existence checks to avoid directory resolution issues
+      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.path) : (scriptMetadata?.required_files || []));
       if (!reqFiles.length) {
         setRequiredFilesStatus(null);
         return null;
@@ -586,7 +593,11 @@ function App() {
         files: reqFiles,
         args: { base_dir: baseDir, baseDir: baseDir, files: reqFiles }
       });
-      const files: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      const rawStatuses: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      // Map back to friendly names when analyzer data is available
+      const files: { name: string; exists: boolean }[] = analyzedFiles.length
+        ? rawStatuses.map((st, idx) => ({ name: analyzedFiles[idx]?.name || st.name.split('/').pop() || st.name, exists: st.exists }))
+        : rawStatuses.map(st => ({ name: st.name, exists: st.exists }));
       setRequiredFilesStatus(files);
       return files;
     } catch (err: any) {
@@ -643,7 +654,7 @@ function App() {
         // Ignore analyzer failure and fall back to metadata
       }
 
-      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.name) : (scriptMetadata?.required_files || []));
+      const reqFiles = (analyzedFiles.length ? analyzedFiles.map(f => f.path) : (scriptMetadata?.required_files || []));
       if (!reqFiles.length) {
         setRequiredFilesStatus(null);
         setOutput(prev => prev + `No required files to check.\n\n`);
@@ -657,7 +668,11 @@ function App() {
         files: reqFiles,
         args: { base_dir: baseDir, baseDir: baseDir, files: reqFiles }
       });
-      const files: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      const rawStatuses: { name: string; exists: boolean }[] = JSON.parse(filesJson);
+      // Map back to friendly names when analyzer data is available
+      const files: { name: string; exists: boolean }[] = analyzedFiles.length
+        ? rawStatuses.map((st, idx) => ({ name: analyzedFiles[idx]?.name || st.name.split('/').pop() || st.name, exists: st.exists }))
+        : rawStatuses.map(st => ({ name: st.name, exists: st.exists }));
       setRequiredFilesStatus(files);
 
       // Display file status in output window

@@ -24,18 +24,40 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
   // Replace textarea with styled line-by-line viewer to allow highlighting
   const renderOutput = () => {
     const lines = (output || '').split('\n');
+    // Track context to style section lines (e.g., missing files for DataDome)
+    let currentScript: 'datadome' | 'snyk' | 'other' | null = null;
+    let inMissingSection = false;
     return (
       <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, \"Courier New\", monospace', lineHeight: '1.5'}}>
         {lines.map((line, idx) => {
           const trimmed = line.trim();
+
+          // Update script context when analyzer header appears
+          const analyzingMatch = /^Analyzing required files for\s+(.+?)\.\.\./i.exec(trimmed);
+          if (analyzingMatch) {
+            const scriptTitle = analyzingMatch[1].toLowerCase();
+            if (scriptTitle.includes('datadome')) currentScript = 'datadome';
+            else if (scriptTitle.includes('snyk')) currentScript = 'snyk';
+            else currentScript = 'other';
+            inMissingSection = false; // reset on new header
+          }
+          // Enter/exit missing section
+          if (/^Missing files:/i.test(trimmed)) inMissingSection = true;
+          if (/^Present files:/i.test(trimmed) || /^All required files found\./i.test(trimmed) || trimmed.length === 0) {
+            inMissingSection = false;
+          }
+
           const isStderr = trimmed.startsWith('[stderr] ');
           const isStep = /^->\s/.test(trimmed);
           const isSuccess = /(^|\b)(✓|success|completed|done)\b/i.test(trimmed) || /✓/.test(line);
           const isWarning = /(^|\b)(warning|warn|caution)\b/i.test(trimmed);
           const isError = /(^|\b)(error|failed|\u2717)\b/i.test(trimmed);
           const isMissing = /(^|\b)missing(s)?\b/i.test(trimmed) || /^Missing\s/i.test(trimmed);
+          const isBullet = /^[\s\t]*[-•]/.test(trimmed) || /^[\s\t]*✓/.test(trimmed);
+          const isMissingBulletInDatadome = inMissingSection && currentScript === 'datadome' && isBullet && !/^✓/.test(trimmed);
+
           let className = '';
-          if (isStderr || isError || isMissing) className = 'text-red-400';
+          if (isStderr || isError || isMissing || isMissingBulletInDatadome) className = 'text-red-400';
           else if (isWarning) className = 'text-yellow-300';
           else if (isSuccess) className = 'text-green-400';
           else if (isStep) className = 'text-cyan-300';
