@@ -51,6 +51,7 @@ function App() {
   const [requiredFilesStatus, setRequiredFilesStatus] = useState<{ name: string; exists: boolean }[] | null>(null);
   const [depsChecked, setDepsChecked] = useState<boolean>(false);
   const [isCheckingRequirements, setIsCheckingRequirements] = useState<boolean>(false);
+  const [isRepairing, setIsRepairing] = useState<boolean>(false);
   const setupRan = useRef(false);
   const [docModal, setDocModal] = useState<{ title: string; file: string; content: string } | null>(null);
   const fileWatchUnsub = useRef<null | (() => void)>(null);
@@ -410,7 +411,12 @@ function App() {
   };
 
   const handleRepair = async () => {
+    // Prevent spam-clicking by ignoring if already repairing
+    if (isRepairing) return;
+    setIsRepairing(true);
     try {
+      // Clear output first, then show progress
+      setOutput('');
       setOutput((p) => p + 'Repairing dependencies...\n');
       if (isBrowserPreview) {
         // Simulate repair success
@@ -458,6 +464,8 @@ function App() {
         venv_status: 'error',
         venv_message: 'Virtual environment not ready',
       });
+    } finally {
+      setIsRepairing(false);
     }
   };
 
@@ -831,12 +839,14 @@ function App() {
         setOutput((p) => p + 'All good: dependencies and required files are satisfied.\n');
       } else {
         if (missingDeps.length) {
-          setOutput((p) => p + `Missing dependencies: ${missingDeps.map(d => d.name).join(', ')}\n`);
+          // Bullet list formatting for missing dependencies
+          setOutput((p) => p + `Missing dependencies:\n${missingDeps.map(d => `  - ${d.name}`).join('\n')}\n`);
         }
         if (filesStatus) {
           const missingFiles = filesStatus.filter(f => !f.exists);
           if (missingFiles.length) {
-            setOutput((p) => p + `Missing files: ${missingFiles.map(f => f.name).join(', ')}\n`);
+            // Bullet list formatting for missing files
+            setOutput((p) => p + `Missing files:\n${missingFiles.map(f => `  - ${f.name}`).join('\n')}\n`);
           }
         }
       }
@@ -913,6 +923,7 @@ function App() {
             onOpenUserGuide={() => handleOpenDoc('guide')}
             onCheckRequirements={handleCheckRequirements}
             isCheckingRequirements={isCheckingRequirements}
+            isRepairing={isRepairing}
             deps={deps}
             requiredFilesStatus={requiredFilesStatus}
             isRunning={isRunning}

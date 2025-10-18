@@ -33,6 +33,8 @@ interface ScriptControlPanelProps {
   manualFiles?: Record<string, string>;
   onToggleManualMode?: (enabled: boolean) => void;
   onSelectInputFile?: (name: string) => void;
+  // New: repairing state to disable button and show loading
+  isRepairing?: boolean;
 }
 
 const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
@@ -56,7 +58,8 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
   requiredFileNames,
   manualFiles = {},
   onToggleManualMode,
-  onSelectInputFile
+  onSelectInputFile,
+  isRepairing = false,
 }) => {
   const [dropdownValue, setDropdownValue] = useState('Snyk Report Compare');
 
@@ -150,10 +153,22 @@ const ScriptControlPanel: React.FC<ScriptControlPanelProps> = ({
             {onRepair && (
               <button
                 onClick={onRepair}
-                className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
+                disabled={isRepairing}
+                className={`bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isRepairing ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title="Fix Python environment issues by recreating .venv and reinstalling dependencies"
+                aria-busy={isRepairing}
               >
-                🛠️ Repair
+                {isRepairing ? (
+                  <span className="flex items-center">
+                    <svg className="w-4 h-4 animate-spin mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5A10 10 0 102 12h2z"></path>
+                    </svg>
+                    Repairing...
+                  </span>
+                ) : (
+                  <>🛠️ Repair</>
+                )}
               </button>
             )}
           </div>

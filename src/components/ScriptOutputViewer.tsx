@@ -28,7 +28,7 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
     let currentScript: 'datadome' | 'snyk' | 'other' | null = null;
     let inMissingSection = false;
     return (
-      <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, \"Courier New\", monospace', lineHeight: '1.5'}}>
+      <div className="w-full p-4 bg-transparent text-app-text font-mono text-sm whitespace-pre-wrap" style={{fontFamily: 'Consolas, Monaco, "Courier New", monospace', lineHeight: '1.5'}}>
         {lines.map((line, idx) => {
           const trimmed = line.trim();
 
@@ -54,10 +54,11 @@ const ScriptOutputViewer: React.FC<ScriptOutputViewerProps> = ({ output, onClear
           const isError = /(^|\b)(error|failed|\u2717)\b/i.test(trimmed);
           const isMissing = /(^|\b)missing(s)?\b/i.test(trimmed) || /^Missing\s/i.test(trimmed);
           const isBullet = /^[\s\t]*[-•]/.test(trimmed) || /^[\s\t]*✓/.test(trimmed);
-          const isMissingBulletInDatadome = inMissingSection && currentScript === 'datadome' && isBullet && !/^✓/.test(trimmed);
+          // Any bullet under a "Missing files:" section should be red (applies to Check Requirements and analyzer output)
+          const isMissingBullet = inMissingSection && isBullet && !/^✓/.test(trimmed);
 
           let className = '';
-          if (isStderr || isError || isMissing || isMissingBulletInDatadome) className = 'text-red-400';
+          if (isStderr || isError || isMissing || isMissingBullet) className = 'text-red-400';
           else if (isWarning) className = 'text-yellow-300';
           else if (isSuccess) className = 'text-green-400';
           else if (isStep) className = 'text-cyan-300';
