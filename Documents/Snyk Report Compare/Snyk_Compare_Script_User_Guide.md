@@ -1,62 +1,55 @@
-# 🛡️ Snyk Compare Script — User Guide
+# 🔐 Snyk Compare Script — User Guide
 
-This guide walks you through comparing Snyk vulnerability reports and updating your tracking file.
-
----
-
-## 📦 Requirements
-
-- `Snyk Report CAT YYYY-MM-DD.xlsx` (latest report)
-- `Snyk Vulnerability tracker.xlsx`
-
-Place these in the working folder shown in the app’s Script Details panel.
+This guide provides a detailed walkthrough of the Snyk Compare script, its purpose, requirements, and outputs.
 
 ---
 
-## 🚀 Steps
+### 🎯 Purpose
 
-1. Select “Snyk Report Compare” from the dropdown
-2. Click “Check Requirements” to validate files and dependencies
-3. Optional: Toggle “Manual Mode” to select files directly via pickers
-4. Click “Run Script”
-5. Watch the progress label as steps advance; output appears below
-6. On success, a compact “Completed” pill appears in the Actions area
+The script compares two Snyk vulnerability reports to find new issues, cross-references them with a master tracker, and generates several outputs to streamline the ticketing and review process.
 
 ---
 
-## 🔄 Reset and Switching
+### 📁 Required Files
 
-- Use “Reset” to clear output, progress, and manual inputs while keeping the current script selected
-- Switching scripts clears progress and completion state automatically
+> **Working Directory:** `Snyk Report Compare`
 
----
+Place the following files directly inside the script's working directory, located at the root of the project.
 
-## 🧭 Interpreting Progress
+| File Description              | Filename Example                               |
+| ----------------------------- | ---------------------------------------------- |
+| **New Snyk Report**           | `Snyk Report CAT 2025-10-29.xlsx`              |
+| **Previous Snyk Report**      | `Snyk Report CAT 2025-10-22.xlsx`              |
+| **Vulnerability Tracker**     | `Snyk Vulnerability tracker.xlsx`              |
 
-You will see phases such as:
-- Pre-flight Validation
-- Step 1 through Step 8
-- Complete
-
-The progress bar and label map to these steps for clarity.
 
 ---
 
-## 🧩 Manual Mode
+### ⚙️ How It Works
 
-- When enabled, automatic file checking is hidden
-- Use the file pickers to select the required inputs
-- Toggle off Manual Mode to restore automatic checking
+1.  **Validation**: The script begins by running a series of checks to ensure all required files and their internal sheets (`Snyk all repositories`, `Tickets`) are present and correctly formatted.
+
+2.  **Comparison**: It identifies **new vulnerabilities** by comparing the `ISSUE_URL` in the new and old reports. If an `ISSUE_URL` is missing, a **fallback ID** is generated from other data (e.g., Project Name + Package + CVE) to ensure every issue is tracked.
+
+3.  **Tracker Cross-Reference**: It checks the `Vulnerability Tracker.xlsx` to see if tickets have already been created for any of the new vulnerabilities.
+
+4.  **Sheet Generation**: It modifies the new Snyk report file by adding three new sheets:
+    -   `Working sheet`: A filtered view of new, non-Docker issues for immediate action.
+    -   `Working sheet - Manual`: A complete, unfiltered view of all issues from the new report, with `Ticket` and `Needs Action` columns to guide manual review.
+    -   `Vulnerability Tracker`: A sheet formatted for easy copy-pasting into your master tracker.
+
+5.  **Ticket Template Creation**: A `.txt` file is created with pre-formatted text for any new vulnerability that doesn't have a ticket, ready to be pasted into an ADO ticket.
+
+6.  **Archiving**: The original input files are moved to a dated folder inside `_archive` to keep your workspace clean.
 
 ---
 
-## ❓ Troubleshooting
+### 📄 Outputs
 
-- Missing files: Re-check requirements or use Manual Mode to pick files
-- Environment issues: Click “Repair” to set up Python and dependencies
-- Unexpected errors: Review the output panel for details
-- No completion pill: The indicator only appears after a successful run
+-   **Updated Snyk Report (`.xlsx`)**: The new report file, now containing the three generated sheets.
+-   **Ticket Template File (`.txt`)**: A text file with templates for creating new tickets.
+-   **Archived Inputs**: Your original files are safely stored in the `_archive` folder.
 
 ---
 
-Private — Internal Use Only
+*Private — Internal Use Only*

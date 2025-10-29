@@ -66,5 +66,5 @@ pip-delete-this-directory.txt
 /src-tauri/target
  
 # Ignore root-level sample folders (local artifacts)
-Snyk Report Compare/
-DataDome Verified Bots Compare/
+/Snyk Report Compare/
+/DataDome Verified Bots Compare/

@@ -1,58 +1,53 @@
 # 🤖 DataDome Compare Script — User Guide
 
-This guide helps you review DataDome verified bots and AI agents across exported datasets.
+This guide provides a detailed walkthrough of the DataDome Compare script, its purpose, requirements, and outputs.
 
 ---
 
-## 📦 Requirements
+### 🎯 Purpose
 
-- `DataDome_Export_AI_agents_YYYY-MM-DD.xlsx`
-- `DataDome_Export_verified_bots_YYYY-MM-DD.xlsx`
-- `DataDome Bots - Block or Whitelist.xlsx`
-
-Place these in the working folder shown in the app’s Script Details panel.
+The script compares the latest DataDome bot reports against a master whitelist file. Its goal is to identify new bots that need to be categorized or existing bots that may have been renamed.
 
 ---
 
-## 🚀 Steps
+### 📁 Required Files
 
-1. Select “DataDome Compare” from the dropdown
-2. Click “Check Requirements” to validate files and dependencies
-3. Optional: Toggle “Manual Mode” to select files directly via pickers
-4. Click “Run Script”
-5. Watch the progress label as steps advance; output appears below
-6. On success, a compact “Completed” pill appears in the Actions area
+> **Working Directory:** `DataDome Verified Bots Compare`
 
----
+Place the following files directly inside the script's working directory, located at the root of the project.
 
-## 🔄 Reset and Switching
+| File Description              | Filename Example                                  |
+| ----------------------------- | ------------------------------------------------- |
+| **AI Agents Report**          | `DataDome_Export_AI_agents_2025-10-29.xlsx`       |
+| **Verified Bots Report**      | `DataDome_Export_verified_bots_2025-10-29.xlsx`   |
+| **Master Bot List**           | `DataDome Bots - Block or Whitelist.xlsx`         |
 
-- Use “Reset” to clear output, progress, and manual inputs while keeping the current script selected
-- Switching scripts clears progress and completion state automatically
 
 ---
 
-## 🧭 Interpreting Progress
+### ⚙️ How It Works
 
-The progress bar and label advance through defined steps, ending with “Complete”.
+1.  **Finds Files**: The script automatically locates the most recent versions of the three required files based on their naming and modification dates.
 
----
+2.  **Reads Master List**: It processes the `Block or Whitelist` file to build a comprehensive list of all currently known and categorized bots.
 
-## 🧩 Manual Mode
+3.  **Compares Reports**: It iterates through the new `AI Agents` and `Verified Bots` reports, comparing each bot against the master list.
 
-- When enabled, automatic file checking is hidden
-- Use the file pickers to select required inputs
-- Toggle off Manual Mode to restore automatic checking
+4.  **Identifies Changes**:
+    -   **New Entry**: If a bot from a report does not exist in the master list, it is flagged as new.
+    -   **Possible Rename**: If a new bot's name is over **70% similar** to an existing bot, it is flagged as a potential rename. This helps catch minor name changes that might otherwise be missed.
 
----
+5.  **Generates Report**: It creates a new, color-coded Excel report that clearly lists all the findings. New entries are colored red, and possible renames are colored yellow.
 
-## ❓ Troubleshooting
-
-- Missing files: Re-check requirements or use Manual Mode to pick files
-- Environment issues: Click “Repair” to set up Python and dependencies
-- Unexpected errors: Review the output panel for details
-- No completion pill: The indicator only appears after a successful run
+6.  **Archives Inputs**: The two DataDome report files (`AI_agents` and `verified_bots`) are moved into the `_archive` folder to keep your workspace organized.
 
 ---
 
-Private — Internal Use Only
+### 📄 Outputs
+
+-   **New Entries Report (`.xlsx`)**: A new file named `DataDome_New_Entries_Report_YYYY-MM-DD.xlsx` that details all new and potentially renamed bots.
+-   **Archived Inputs**: Your original report files are safely stored in the `_archive` folder.
+
+---
+
+*Private — Internal Use Only*

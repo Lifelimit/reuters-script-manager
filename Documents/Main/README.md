@@ -1,105 +1,81 @@
-# 📘 Reuters Script Manager — User Guide
+# 📘 Reuters Script Manager — Script Guides
 
-Simple, practical guidance for using the Reuters Script Manager desktop app. This guide focuses on what you need to run scripts successfully — no developer setup required.
-
----
-
-## 🎯 What You Can Do
-
-- 🔐 Compare Snyk vulnerability reports over time
-- 🤖 Review DataDome verified bots and AI agents
-- 📚 Open step-by-step user guides directly in the app
+This guide provides a clear, easy-to-understand overview of the scripts managed by this application. Below is a detailed breakdown of what each script does, what files it requires, and what it produces.
 
 ---
 
-## 🚀 Quick Start
+## 🔐 Snyk Vulnerability Analysis
 
-1. Launch the app
-2. Choose a script from the dropdown (Snyk or DataDome)
-3. Ensure required files are present (status indicators will confirm)
-4. Open the User Guide from the top bar for exact steps
-5. Click Run once requirements are met
+**Purpose:** To compare the latest Snyk vulnerability report against a previous one, identify new issues, and generate actionable outputs for tracking and ticketing.
 
----
+<br>
 
-## 📁 Required Files
+#### 📁 Required Files
 
-The app automatically checks for required files. Place them in the same directory as the script or in the working folder shown in the details panel.
+> **Working Directory:** `Snyk Report Compare`
 
-### Snyk Report Compare
-- `Snyk Report CAT YYYY-MM-DD.xlsx` (latest report)
-- `Snyk Vulnerability tracker.xlsx` (tracking file)
+Place the following files directly inside the script's working directory, located at the root of the project.
 
-### DataDome Compare
-- `DataDome_Export_AI_agents_YYYY-MM-DD.xlsx`
-- `DataDome_Export_verified_bots_YYYY-MM-DD.xlsx`
-- `DataDome Bots - Block or Whitelist.xlsx`
+| File Description              | Filename Example                               |
+| ----------------------------- | ---------------------------------------------- |
+| **New Snyk Report**           | `Snyk Report CAT 2025-10-29.xlsx`              |
+| **Previous Snyk Report**      | `Snyk Report CAT 2025-10-22.xlsx`              |
+| **Vulnerability Tracker**     | `Snyk Vulnerability tracker.xlsx`              |
 
----
 
-## 🧭 Using the App
+#### ⚙️ Process at a Glance
 
-- Top bar: Open README and the script’s User Guide
-- Left panel: Script details, working directory, dependencies, and required files
-- Right panel: Controls for selecting, resetting, checking requirements, repairing, and running scripts
-- Bottom panel: Real-time output and status
+1.  **Validates Files**: The script first runs a comprehensive check to ensure all required files and their internal sheets (`Snyk all repositories`, `Tickets`) are present and correctly formatted.
+2.  **Compares Reports**: It identifies **new vulnerabilities** by comparing the `ISSUE_URL` in the new and old reports. If an `ISSUE_URL` is missing, it creates a **fallback ID** from other data (like Project Name + Package + CVE) to ensure no issue is missed.
+3.  **Cross-References Tracker**: It checks the `Vulnerability Tracker.xlsx` to see if tickets already exist for any of the new vulnerabilities.
+4.  **Generates Excel Sheets**: It modifies the new Snyk report by adding three new, pre-formatted sheets:
+    -   `Working sheet`: A filtered view of new, non-Docker issues for immediate action.
+    -   `Working sheet - Manual`: A complete, unfiltered view of all issues, with `Ticket` and `Needs Action` columns to guide manual review.
+    -   `Vulnerability Tracker`: A sheet ready to be copy-pasted into your master tracker file.
+5.  **Creates Ticket Templates**: A `.txt` file is created with pre-formatted text for any new vulnerability that doesn't have a ticket, ready to be pasted into an ADO ticket.
+6.  **Archives Inputs**: The original input files (old report, original new report, and tracker) are moved into a dated folder inside `_archive` to keep your workspace clean.
 
----
+#### 📄 Generated Outputs
 
-## 🛠️ Common Actions
-
-- Browse: Select a script file to run
-- Repair: Automatically set up the Python environment if needed
-- Check Requirements: Re-validate files if you’ve added/changed them
-- Reset: Restore the panel to its initial state for the current script
-- Reveal: Open the working folder in your file explorer
+-   **Updated Snyk Report (`.xlsx`)**: The new report file, now containing the three generated sheets.
+-   **Ticket Template File (`.txt`)**: A text file with templates for creating new tickets.
 
 ---
 
-## 🧩 Manual Mode (Optional)
+## 🤖 DataDome Bot Review
 
-- Toggle Manual Mode to select input files directly via file pickers
-- When Manual Mode is enabled, automatic file checking is hidden
-- Turn Manual Mode off to return to automatic file discovery
+**Purpose:** To compare the latest DataDome bot reports against a master whitelist, identify new or potentially renamed bots, and generate a clean report of the findings.
 
----
+<br>
 
-## 📈 Run Progress and Completion
+#### 📁 Required Files
 
-- Progress maps to distinct steps shown during execution
-- The compact “Completed” pill appears only for successful runs
-- Switching scripts clears progress and completion state
-- Use Reset to clear output, progress, and manual inputs without changing the selected script
+> **Working Directory:** `DataDome Verified Bots Compare`
 
----
+Place the following files directly inside the script's working directory, located at the root of the project.
 
-## ✅ Tips for Success
+| File Description              | Filename Example                                  |
+| ----------------------------- | ------------------------------------------------- |
+| **AI Agents Report**          | `DataDome_Export_AI_agents_2025-10-29.xlsx`       |
+| **Verified Bots Report**      | `DataDome_Export_verified_bots_2025-10-29.xlsx`   |
+| **Master Bot List**           | `DataDome Bots - Block or Whitelist.xlsx`         |
 
-- Keep the latest files in the working directory
-- Follow the User Guide steps carefully
-- Don’t interrupt the script while it’s running
-- Use consistent file naming and archive old files regularly
 
----
+#### ⚙️ Process at a Glance
 
-## ❓ Troubleshooting
+1.  **Finds Latest Files**: The script automatically locates the most recent versions of the three required files.
+2.  **Reads Master List**: It processes the `Block or Whitelist` file to build a complete list of all currently known and categorized bots.
+3.  **Compares Reports to Master List**: It iterates through the new AI Agents and Verified Bots reports and compares each entry against the master list.
+4.  **Identifies Changes**:
+    -   **New Entry**: If a bot from a report does not exist in the master list, it is flagged as new.
+    -   **Possible Rename**: If a new bot's name is over **70% similar** to an existing bot, it is flagged as a potential rename, helping you catch minor name changes.
+5.  **Generates Report**: It creates a new, color-coded Excel report that clearly lists all the findings.
+6.  **Archives Inputs**: The two DataDome report files are moved into the `_archive` folder.
 
-- Missing files: Status indicators will show what’s missing
-- Environment issues: Click Repair to recreate the Python environment
-- Permission errors: Ensure files aren’t locked or restricted
-- Unexpected messages: Review the output panel for details
-- Progress stuck: Switch scripts or click Reset to clear and try again
-- Completion indicator: The compact "Completed" pill only appears after a successful run
-- Manual mode: Toggle off to hide file pickers and restore automatic file checking
+#### 📄 Generated Outputs
+
+-   **New Entries Report (`.xlsx`)**: A new file named `DataDome_New_Entries_Report_YYYY-MM-DD.xlsx` with all new and potentially renamed bots. The "Change Type" column is colored red for new entries and yellow for possible renames.
 
 ---
 
-## 📚 Guides
-
-Open these directly in the app:
-- Snyk: `Snyk_Compare_Script_User_Guide.md`
-- DataDome: `DataDome_Compare_Script_User_Guide.md`
-
----
-
-Private — Internal Use Only
+*Private — Internal Use Only*
